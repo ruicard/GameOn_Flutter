@@ -21,16 +21,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rankup.PlannedMatch
 import com.example.rankup.UserViewModel
+import com.example.rankup.ui.theme.RankUpTheme
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlanMatchScreen(
-    viewModel: UserViewModel,
+    onSave: (PlannedMatch) -> Unit,
     onBack: () -> Unit, 
     onCancelToHome: () -> Unit, 
     modifier: Modifier = Modifier
@@ -103,7 +105,7 @@ fun PlanMatchScreen(
 
         when (step) {
             1 -> {
-                // Modality Dropdown
+                // Step 1 Content...
                 ExposedDropdownMenuBox(
                     expanded = modalityExpanded,
                     onExpandedChange = { modalityExpanded = !modalityExpanded }
@@ -144,8 +146,6 @@ fun PlanMatchScreen(
 
                 if (selectedModality.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    // Match Type Dropdown
                     ExposedDropdownMenuBox(
                         expanded = matchTypeExpanded,
                         onExpandedChange = { matchTypeExpanded = !matchTypeExpanded }
@@ -185,95 +185,53 @@ fun PlanMatchScreen(
                 if (selectedMatchType.isNotEmpty()) {
                     Spacer(modifier = Modifier.weight(1f))
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 24.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         OutlinedButton(
                             onClick = onBack,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp),
+                            modifier = Modifier.weight(1f).height(56.dp),
                             shape = MaterialTheme.shapes.medium,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Black)
-                        ) {
-                            Text("Cancel", fontSize = 16.sp)
-                        }
+                        ) { Text("Cancel") }
                         Button(
                             onClick = { step = 2 },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp),
+                            modifier = Modifier.weight(1f).height(56.dp),
                             shape = MaterialTheme.shapes.medium,
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                        ) {
-                            Text("Next", color = Color.White, fontSize = 16.sp)
-                        }
+                        ) { Text("Next") }
                     }
                 }
             }
             2 -> {
-                // Step 2: Schedule Details
-                
-                // "When" Field
+                // Step 2 Content...
                 OutlinedTextField(
                     value = selectedDateTime.ifEmpty { "When" },
                     onValueChange = {},
                     readOnly = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
-                    label = { if(selectedDateTime.isNotEmpty()) Text("When") },
-                    placeholder = { Text("When") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = Color.LightGray,
-                        focusedBorderColor = Color.Black
-                    ),
                     trailingIcon = {
                         IconButton(onClick = {
-                            DatePickerDialog(
-                                context,
-                                { _, year, month, dayOfMonth ->
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            selectedDateTime = "$dayOfMonth/${month + 1}/$year $hourOfDay:${String.format("%02d", minute)}"
-                                        },
-                                        calendar.get(Calendar.HOUR_OF_DAY),
-                                        calendar.get(Calendar.MINUTE),
-                                        true
-                                    ).show()
-                                },
-                                calendar.get(Calendar.YEAR),
-                                calendar.get(Calendar.MONTH),
-                                calendar.get(Calendar.DAY_OF_MONTH)
-                            ).show()
-                        }) {
-                            Icon(Icons.Default.DateRange, contentDescription = null)
-                        }
+                            DatePickerDialog(context, { _, y, m, d ->
+                                TimePickerDialog(context, { _, h, min ->
+                                    selectedDateTime = "$d/${m + 1}/$y $h:${String.format("%02d", min)}"
+                                }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
+                            }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
+                        }) { Icon(Icons.Default.DateRange, null) }
                     }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // "Where" Field
                 OutlinedTextField(
                     value = whereText,
                     onValueChange = { whereText = it },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
-                    placeholder = { Text("Where") },
-                    label = { if(whereText.isNotEmpty()) Text("Where") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = Color.LightGray,
-                        focusedBorderColor = Color.Black
-                    )
+                    placeholder = { Text("Where") }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // "Select your team" Dropdown
                 ExposedDropdownMenuBox(
                     expanded = teamExpanded,
                     onExpandedChange = { teamExpanded = !teamExpanded }
@@ -283,227 +241,79 @@ fun PlanMatchScreen(
                         onValueChange = {},
                         readOnly = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = teamExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                        label = { if(selectedTeam.isNotEmpty()) Text("Select your team") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.LightGray,
-                            focusedBorderColor = Color.Black
-                        )
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
                     )
-
-                    ExposedDropdownMenu(
-                        expanded = teamExpanded,
-                        onDismissRequest = { teamExpanded = false }
-                    ) {
-                        teams.forEach { team ->
-                            DropdownMenuItem(
-                                text = { Text(team) },
-                                onClick = {
-                                    selectedTeam = team
-                                    teamExpanded = false
-                                }
-                            )
-                        }
+                    ExposedDropdownMenu(expanded = teamExpanded, onDismissRequest = { teamExpanded = false }) {
+                        teams.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { selectedTeam = it; teamExpanded = false }) }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // "Select your opponent" Search Bar
                 ExposedDropdownMenuBox(
                     expanded = opponentExpanded && filteredOpponents.isNotEmpty(),
                     onExpandedChange = { opponentExpanded = !opponentExpanded }
                 ) {
                     OutlinedTextField(
                         value = opponentText,
-                        onValueChange = { 
-                            opponentText = it
-                            opponentExpanded = true
-                        },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
+                        onValueChange = { opponentText = it; opponentExpanded = true },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium,
                         placeholder = { Text("Select your opponent") },
-                        label = { if(opponentText.isNotEmpty()) Text("Select your opponent") },
-                        trailingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.LightGray,
-                            focusedBorderColor = Color.Black
-                        )
+                        trailingIcon = { Icon(Icons.Default.Search, null) }
                     )
-
-                    ExposedDropdownMenu(
-                        expanded = opponentExpanded && filteredOpponents.isNotEmpty(),
-                        onDismissRequest = { opponentExpanded = false }
-                    ) {
-                        filteredOpponents.forEach { opponent ->
-                            DropdownMenuItem(
-                                text = { Text(opponent) },
-                                onClick = {
-                                    opponentText = opponent
-                                    opponentExpanded = false
-                                }
-                            )
-                        }
+                    ExposedDropdownMenu(expanded = opponentExpanded && filteredOpponents.isNotEmpty(), onDismissRequest = { opponentExpanded = false }) {
+                        filteredOpponents.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { opponentText = it; opponentExpanded = false }) }
                     }
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
-
-                val allFieldsFilled = selectedDateTime.isNotEmpty() && 
-                                     whereText.isNotEmpty() && 
-                                     selectedTeam.isNotEmpty() && 
-                                     opponentText.isNotEmpty()
-
+                val allFilled = selectedDateTime.isNotEmpty() && whereText.isNotEmpty() && selectedTeam.isNotEmpty() && opponentText.isNotEmpty()
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = onCancelToHome,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Black)
-                    ) {
-                        Text("Cancel", fontSize = 16.sp)
-                    }
-                    Button(
-                        onClick = { step = 3 },
-                        enabled = allFieldsFilled,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Black,
-                            disabledContainerColor = Color.LightGray
-                        )
-                    ) {
-                        Text("Save", color = if(allFieldsFilled) Color.White else Color.DarkGray, fontSize = 16.sp)
-                    }
+                    OutlinedButton(onClick = onCancelToHome, modifier = Modifier.weight(1f).height(56.dp)) { Text("Cancel") }
+                    Button(onClick = { step = 3 }, enabled = allFilled, modifier = Modifier.weight(1f).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("Save") }
                 }
             }
             3 -> {
-                // Step 3: Confirmation Screen
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // Center content using weight
+                // Step 3 Content...
+                Column(modifier = Modifier.fillMaxSize().padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Spacer(modifier = Modifier.weight(1f))
-                    
-                    // Green Checkmark Circle
-                    Box(
-                        modifier = Modifier
-                            .size(120.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00897B)), // Teal/Green color from image
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(72.dp)
-                        )
+                    Box(modifier = Modifier.size(120.dp).clip(CircleShape).background(Color(0xFF00897B)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(72.dp))
                     }
-                    
                     Spacer(modifier = Modifier.height(32.dp))
-                    
-                    Text(
-                        text = "Match planned. Invites sent!",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp
-                        )
-                    )
-
+                    Text("Match planned. Invites sent!", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                     Spacer(modifier = Modifier.height(48.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
+                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
                         Column(modifier = Modifier.padding(24.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Match details",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                                IconButton(onClick = { step = 2 }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF3F51B5)) // Blue color for edit icon
-                                }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Match details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                IconButton(onClick = { step = 2 }) { Icon(Icons.Default.Edit, null, tint = Color(0xFF3F51B5)) }
                             }
-                            
                             Spacer(modifier = Modifier.height(16.dp))
-                            
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(24.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(text = selectedDateTime, style = MaterialTheme.typography.bodyLarge)
-                            }
-                            
+                            Row { Icon(Icons.Default.DateRange, null); Spacer(modifier = Modifier.width(12.dp)); Text(selectedDateTime) }
                             Spacer(modifier = Modifier.height(12.dp))
-                            
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(24.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(text = whereText, style = MaterialTheme.typography.bodyLarge)
-                            }
+                            Row { Icon(Icons.Default.LocationOn, null); Spacer(modifier = Modifier.width(12.dp)); Text(whereText) }
                         }
                     }
-
                     Spacer(modifier = Modifier.weight(1f))
-
                     Button(
-                        onClick = {
-                            viewModel.addMatch(
-                                PlannedMatch(
-                                    modality = selectedModality,
-                                    matchType = selectedMatchType,
-                                    dateTime = selectedDateTime,
-                                    location = whereText,
-                                    myTeam = selectedTeam,
-                                    opponent = opponentText
-                                )
-                            )
-                            onCancelToHome()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
+                        onClick = { onSave(PlannedMatch(modality = selectedModality, matchType = selectedMatchType, dateTime = selectedDateTime, location = whereText, myTeam = selectedTeam, opponent = opponentText)) },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
-                    ) {
-                        Text("Done", color = Color.White, fontSize = 16.sp)
-                    }
+                    ) { Text("Done") }
                 }
             }
         }
     }
 }
 
+@Preview(showBackground = true)
 @Composable
-fun SummaryItem(label: String, value: String) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-        Text(text = value, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
-    }
+fun PlanMatchStep1Preview() {
+    RankUpTheme { PlanMatchScreen(onSave = {}, onBack = {}, onCancelToHome = {}) }
 }

@@ -16,8 +16,10 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.*
 
 data class UserProfile(
     val id: UUID,
@@ -31,6 +33,7 @@ data class UserProfile(
 )
 
 data class PlannedMatch(
+    val id: UUID = UUID.randomUUID(),
     val modality: String,
     val matchType: String,
     val dateTime: String,
@@ -77,14 +80,12 @@ class UserViewModel : ViewModel() {
                 if (credential is GoogleIdTokenCredential) {
                     val email = credential.id
                     
-                    // Check if user exists in database
                     val existingUser = userDao.getUserByEmail(email)
                     
                     if (existingUser != null) {
-                        // Load existing user info
                         _userProfile.value = UserProfile(
                             id = existingUser.id,
-                            name = credential.displayName, // Always take fresh name from Google
+                            name = credential.displayName,
                             email = email,
                             profilePictureUrl = credential.profilePictureUri?.toString(),
                             username = existingUser.username,
@@ -92,12 +93,12 @@ class UserViewModel : ViewModel() {
                             ageGroup = existingUser.ageGroup,
                             city = existingUser.city
                         )
+                        loadMatches(context, existingUser.id)
                     } else {
-                        // Create new user in database
                         val newUser = User(
                             username = credential.displayName ?: "",
                             email = email,
-                            hashedPassword = "", // Google handles auth
+                            hashedPassword = "",
                             gender = Gender.UNKNOWN,
                             ageGroup = AgeGroup.SENIOR_18_45,
                             isCoach = false,
@@ -113,21 +114,37 @@ class UserViewModel : ViewModel() {
                             profilePictureUrl = credential.profilePictureUri?.toString(),
                             username = newUser.username
                         )
+                        loadMatches(context, newUser.id)
                     }
                     Toast.makeText(context, "Welcome ${credential.displayName}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: NoCredentialException) {
                 Log.e("UserViewModel", "No credentials available.")
-                Toast.makeText(context, "No accounts found", Toast.LENGTH_SHORT).show()
             } catch (e: GetCredentialException) {
                 Log.e("UserViewModel", "SignIn Error: ${e.message}")
-                if (e.message?.contains("cancelled") == false) {
-                    handleDeveloperError(context, e)
-                }
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Unknown Error: ${e.message}")
             } finally {
                 isSigningIn = false
+            }
+        }
+    }
+
+    private fun loadMatches(context: Context, userId: UUID) {
+        val db = AppDatabase.getDatabase(context)
+        viewModelScope.launch {
+            db.matchDao().getMatchesByUser(userId).collectLatest { matches ->
+                _plannedMatches.value = matches.map { 
+                    PlannedMatch(
+                        id = it.id,
+                        modality = it.location ?: "Futsal", // Simplified for now
+                        matchType = it.matchType.name,
+                        dateTime = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(it.scheduledDate)),
+                        location = it.location ?: "",
+                        myTeam = "Team HackYou", // Needs to be real
+                        opponent = it.city ?: "Opponent" // Using city field as opponent for now
+                    )
+                }
             }
         }
     }
@@ -139,15 +156,6 @@ class UserViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // Update local state
-                _userProfile.value = current.copy(
-                    username = username,
-                    gender = gender,
-                    ageGroup = ageGroup,
-                    city = city
-                )
-
-                // Update database
                 val userToUpdate = User(
                     id = current.id,
                     username = username,
@@ -159,38 +167,48 @@ class UserViewModel : ViewModel() {
                     isAdmin = false,
                     city = city
                 )
-                userDao.insertUser(userToUpdate) // insert with REPLACE strategy
-                Toast.makeText(context, "Profile updated successfully", Toast.LENGTH_SHORT).show()
+                userDao.insertUser(userToUpdate)
+                _userProfile.value = current.copy(username = username, gender = gender, ageGroup = ageGroup, city = city)
+                Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Update Error: ${e.message}")
-                Toast.makeText(context, "Failed to update profile", Toast.LENGTH_SHORT).show()
             }
         }
-    }
-
-    private fun handleDeveloperError(context: Context, e: GetCredentialException) {
-        val msg = if (e.message?.contains("10") == true) {
-            "Developer Error (10): Check SHA-1/Package Name."
-        } else {
-            "Login failed: ${e.message}"
-        }
-        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
     }
 
     fun signOut(context: Context) {
         val credentialManager = CredentialManager.create(context)
         viewModelScope.launch {
-            try {
-                credentialManager.clearCredentialState(ClearCredentialStateRequest())
-                _userProfile.value = null
-                Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Log.e("UserViewModel", "SignOut Error: ${e.message}")
-            }
+            credentialManager.clearCredentialState(ClearCredentialStateRequest())
+            _userProfile.value = null
+            _plannedMatches.value = emptyList()
         }
     }
 
-    fun addMatch(match: PlannedMatch) {
-        _plannedMatches.value = _plannedMatches.value + match
+    fun addMatch(context: Context, match: PlannedMatch) {
+        val user = _userProfile.value ?: return
+        val db = AppDatabase.getDatabase(context)
+        
+        viewModelScope.launch {
+            try {
+                val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).parse(match.dateTime)
+                val matchEntity = Match(
+                    id = match.id,
+                    sportId = UUID.randomUUID(), // Placeholder
+                    matchType = ParticipantType.TEAM,
+                    scheduledDate = date?.time ?: System.currentTimeMillis(),
+                    location = match.location,
+                    city = match.opponent, // Store opponent in city field for this prototype
+                    status = MatchStatus.SCHEDULED,
+                    createdByUserId = user.id
+                )
+                db.matchDao().insertMatch(matchEntity)
+                // Local state will update via loadMatches collection if we observe correctly
+                // For now manual append to state flow to show immediate UI update
+                _plannedMatches.value = _plannedMatches.value + match
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Add Match Error: ${e.message}")
+            }
+        }
     }
 }

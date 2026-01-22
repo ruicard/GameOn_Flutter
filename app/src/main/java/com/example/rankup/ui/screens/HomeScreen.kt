@@ -3,6 +3,7 @@ package com.example.rankup.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,11 +20,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.rankup.PlannedMatch
 import com.example.rankup.UserProfile
+import com.example.rankup.ui.theme.RankUpTheme
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,49 +35,21 @@ fun HomeScreen(
     userProfile: UserProfile?,
     plannedMatches: List<PlannedMatch>,
     onPlanMatchClick: () -> Unit,
+    onSignInClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (plannedMatches.isNotEmpty()) {
-        LazyColumn(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            val latestMatch = plannedMatches.last()
-            
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                UpcomingMatchCard(latestMatch)
-            }
-
-            item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Next matches",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        textAlign = TextAlign.Start
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    NextMatchCard(latestMatch)
-                }
-            }
-
-            item {
-                Text(
-                    text = "Plan a match",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Start
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                InviteFriendsCard(onPlanMatchClick)
-                Spacer(modifier = Modifier.height(24.dp))
-            }
+    // Sort matches by date (ascending - closest first)
+    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+    val sortedMatches = plannedMatches.sortedBy { 
+        try {
+            sdf.parse(it.dateTime)?.time ?: Long.MAX_VALUE
+        } catch (e: Exception) {
+            Long.MAX_VALUE
         }
-    } else {
-        // Empty State: Matches the "no game planned" printscreen
+    }
+
+    if (userProfile == null) {
+        // Sign In Prompt State
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -82,7 +57,91 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Stadium Image (using a public URL for the football stadium)
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 40.dp)) {
+                Text(
+                    text = "Hello there,",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "Sign in to continue",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.Gray
+                )
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(0.7f).aspectRatio(1.5f),
+                shape = RoundedCornerShape(32.dp),
+                color = Color(0xFFE0E0E0)
+            ) {}
+
+            Spacer(modifier = Modifier.height(100.dp))
+
+            OutlinedButton(
+                onClick = onSignInClick,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "G ", color = Color.Red, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                    Text(text = "Sign in with Google", color = Color.Black, fontSize = 18.sp)
+                }
+            }
+        }
+    } else if (sortedMatches.isNotEmpty()) {
+        // Signed in with matches
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            val closestMatch = sortedMatches.first()
+            
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                UpcomingMatchCard(closestMatch)
+            }
+
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Next matches",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(sortedMatches) { match ->
+                            NextMatchCard(match)
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    text = "Plan a match",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                InviteFriendsCard(onPlanMatchClick)
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    } else {
+        // Signed in but no matches
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             AsyncImage(
                 model = "https://images.unsplash.com/photo-1574629810360-7efbbe195018?q=80&w=1000&auto=format&fit=crop",
                 contentDescription = "Stadium",
@@ -97,10 +156,7 @@ fun HomeScreen(
 
             Text(
                 text = "Plan your first match",
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 24.sp
-                ),
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp),
                 textAlign = TextAlign.Center
             )
 
@@ -118,9 +174,7 @@ fun HomeScreen(
 
             Button(
                 onClick = onPlanMatchClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
             ) {
@@ -153,16 +207,11 @@ fun UpcomingMatchCard(match: PlannedMatch) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFFE0E0E0)),
+                modifier = Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE0E0E0)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -191,9 +240,7 @@ fun NextMatchCard(match: PlannedMatch) {
     } catch (e: Exception) {}
 
     Card(
-        modifier = Modifier
-            .width(220.dp)
-            .height(180.dp),
+        modifier = Modifier.width(220.dp).height(180.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -227,15 +274,10 @@ fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier) {
     ) {
         Box(contentAlignment = Alignment.BottomEnd) {
             Box(
-                modifier = Modifier
-                    .size(70.dp)
-                    .clip(CircleShape)
-                    .background(color)
+                modifier = Modifier.size(70.dp).clip(CircleShape).background(color)
             )
             Surface(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape),
+                modifier = Modifier.size(24.dp).clip(CircleShape),
                 color = Color.Gray.copy(alpha = 0.8f)
             ) {
                 Icon(
@@ -268,9 +310,7 @@ fun InviteFriendsCard(onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier
-                .padding(32.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(32.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
@@ -284,5 +324,21 @@ fun InviteFriendsCard(onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
             )
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HomeScreenPreview() {
+    RankUpTheme {
+        HomeScreen(
+            userProfile = UserProfile(UUID.randomUUID(), "Rui Cardoso", "rui@example.com", null),
+            plannedMatches = listOf(
+                PlannedMatch(UUID.randomUUID(), "Football", "Team", "12/09/2025 18:00", "Campo Futebol Bosch", "Team HackYou", "Team Badass"),
+                PlannedMatch(UUID.randomUUID(), "Padel", "Team", "15/09/2025 10:00", "Padel Center", "Team HackYou", "Team Crackers")
+            ),
+            onPlanMatchClick = {},
+            onSignInClick = {}
+        )
     }
 }

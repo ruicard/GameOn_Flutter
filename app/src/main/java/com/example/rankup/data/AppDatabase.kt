@@ -22,6 +22,7 @@ import androidx.room.TypeConverters
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
+    abstract fun matchDao(): MatchDao
 
     companion object {
         @Volatile

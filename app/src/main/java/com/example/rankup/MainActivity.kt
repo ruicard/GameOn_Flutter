@@ -17,7 +17,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.rankup.ui.components.UserProfileTopBar
 import com.example.rankup.ui.screens.AccountScreen
@@ -50,8 +50,10 @@ class MainActivity : ComponentActivity() {
 fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
     var showPlanMatch by rememberSaveable { mutableStateOf(false) }
-    val userProfile by userViewModel.userProfile.collectAsState()
-    val plannedMatches by userViewModel.plannedMatches.collectAsState()
+    
+    val userProfile: UserProfile? by userViewModel.userProfile.collectAsStateWithLifecycle()
+    val plannedMatches: List<PlannedMatch> by userViewModel.plannedMatches.collectAsStateWithLifecycle()
+    
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -91,7 +93,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                     onClick = { if (userProfile != null) currentDestination = AppDestinations.ACCOUNT },
                     enabled = userProfile != null
                 )
-                // Home item (always enabled)
+                // Home item
                 item(
                     icon = { Icon(AppDestinations.HOME.icon, contentDescription = null) },
                     label = { Text(AppDestinations.HOME.label) },
@@ -151,10 +153,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     }
 }
 
-enum class AppDestinations(
-    val label: String,
-    val icon: ImageVector,
-) {
+enum class AppDestinations(val label: String, val icon: ImageVector) {
     ACCOUNT("Account", Icons.Default.Person),
     HOME("Home", Icons.Default.Home),
     TEAMS("Teams", Icons.Default.Groups),

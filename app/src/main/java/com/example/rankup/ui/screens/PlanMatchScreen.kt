@@ -25,7 +25,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rankup.PlannedMatch
-import com.example.rankup.UserViewModel
 import com.example.rankup.ui.theme.RankUpTheme
 import java.util.*
 
@@ -105,7 +104,6 @@ fun PlanMatchScreen(
 
         when (step) {
             1 -> {
-                // Step 1 Content...
                 ExposedDropdownMenuBox(
                     expanded = modalityExpanded,
                     onExpandedChange = { modalityExpanded = !modalityExpanded }
@@ -115,20 +113,10 @@ fun PlanMatchScreen(
                         onValueChange = {},
                         readOnly = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modalityExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.LightGray,
-                            focusedBorderColor = Color.Black
-                        )
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
                     )
-
-                    ExposedDropdownMenu(
-                        expanded = modalityExpanded,
-                        onDismissRequest = { modalityExpanded = false }
-                    ) {
+                    ExposedDropdownMenu(expanded = modalityExpanded, onDismissRequest = { modalityExpanded = false }) {
                         modalities.forEach { modality ->
                             DropdownMenuItem(
                                 text = { Text(modality) },
@@ -155,28 +143,12 @@ fun PlanMatchScreen(
                             onValueChange = {},
                             readOnly = true,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = matchTypeExpanded) },
-                            modifier = Modifier
-                                .menuAnchor()
-                                .fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                unfocusedBorderColor = Color.LightGray,
-                                focusedBorderColor = Color.Black
-                            )
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium
                         )
-
-                        ExposedDropdownMenu(
-                            expanded = matchTypeExpanded,
-                            onDismissRequest = { matchTypeExpanded = false }
-                        ) {
+                        ExposedDropdownMenu(expanded = matchTypeExpanded, onDismissRequest = { matchTypeExpanded = false }) {
                             matchTypes.forEach { type ->
-                                DropdownMenuItem(
-                                    text = { Text(type) },
-                                    onClick = {
-                                        selectedMatchType = type
-                                        matchTypeExpanded = false
-                                    }
-                                )
+                                DropdownMenuItem(text = { Text(type) }, onClick = { selectedMatchType = type; matchTypeExpanded = false })
                             }
                         }
                     }
@@ -188,23 +160,12 @@ fun PlanMatchScreen(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = onBack,
-                            modifier = Modifier.weight(1f).height(56.dp),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Black)
-                        ) { Text("Cancel") }
-                        Button(
-                            onClick = { step = 2 },
-                            modifier = Modifier.weight(1f).height(56.dp),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                        ) { Text("Next") }
+                        OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f).height(56.dp)) { Text("Cancel") }
+                        Button(onClick = { step = 2 }, modifier = Modifier.weight(1f).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("Next") }
                     }
                 }
             }
             2 -> {
-                // Step 2 Content...
                 OutlinedTextField(
                     value = selectedDateTime.ifEmpty { "When" },
                     onValueChange = {},
@@ -278,8 +239,11 @@ fun PlanMatchScreen(
                 }
             }
             3 -> {
-                // Step 3 Content...
-                Column(modifier = Modifier.fillMaxSize().padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(bottom = 24.dp), 
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Spacer(modifier = Modifier.weight(1f))
                     Box(modifier = Modifier.size(120.dp).clip(CircleShape).background(Color(0xFF00897B)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(72.dp))

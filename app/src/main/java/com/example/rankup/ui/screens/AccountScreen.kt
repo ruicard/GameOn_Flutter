@@ -43,8 +43,14 @@ fun AccountScreen(
 
     var username by remember { mutableStateOf(userProfile.username) }
     var city by remember { mutableStateOf(userProfile.city) }
-    var gender by remember { mutableStateOf(userProfile.gender) }
-    var ageGroup by remember { mutableStateOf(userProfile.ageGroup) }
+    
+    // Parse strings back to Enums for the UI logic
+    var gender by remember { 
+        mutableStateOf(try { Gender.valueOf(userProfile.gender) } catch (e: Exception) { Gender.UNKNOWN }) 
+    }
+    var ageGroup by remember { 
+        mutableStateOf(try { AgeGroup.valueOf(userProfile.ageGroup) } catch (e: Exception) { AgeGroup.SENIOR_18_45 }) 
+    }
 
     var genderExpanded by remember { mutableStateOf(false) }
     var ageExpanded by remember { mutableStateOf(false) }
@@ -181,13 +187,13 @@ fun AccountScreenPreview() {
     RankUpTheme {
         AccountScreen(
             userProfile = UserProfile(
-                id = UUID.randomUUID(),
+                id = UUID.randomUUID().toString(),
                 name = "Rui Cardoso",
                 email = "rui@example.com",
                 profilePictureUrl = null,
                 username = "ruicardoso",
-                gender = Gender.MALE,
-                ageGroup = AgeGroup.SENIOR_18_45,
+                gender = Gender.MALE.name,
+                ageGroup = AgeGroup.SENIOR_18_45.name,
                 city = "Porto"
             ),
             onUpdateClick = { _, _, _, _ -> },

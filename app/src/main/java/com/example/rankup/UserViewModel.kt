@@ -13,51 +13,91 @@ import androidx.lifecycle.viewModelScope
 import com.example.rankup.data.*
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.toObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 
 data class UserProfile(
-    val id: UUID,
-    val name: String?,
-    val email: String,
-    val profilePictureUrl: String?,
+    val id: String = "",
+    val name: String? = null,
+    val email: String = "",
+    val profilePictureUrl: String? = null,
     val username: String = "",
-    val gender: Gender = Gender.UNKNOWN,
-    val ageGroup: AgeGroup = AgeGroup.SENIOR_18_45,
+    val gender: String = Gender.UNKNOWN.name,
+    val ageGroup: String = AgeGroup.SENIOR_18_45.name,
     val city: String = ""
 )
 
 data class PlannedMatch(
-    val id: UUID = UUID.randomUUID(),
-    val modality: String,
-    val matchType: String,
-    val dateTime: String,
-    val location: String,
-    val myTeam: String,
-    val opponent: String
+    val id: String = UUID.randomUUID().toString(),
+    val modality: String = "",
+    val matchType: String = "",
+    val dateTime: String = "",
+    val location: String = "",
+    val myTeam: String = "",
+    val opponent: String = "",
+    val createdByUserId: String = ""
+)
+
+data class PlannedTeam(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "",
+    val sport: String = "",
+    val members: List<String> = emptyList(),
+    val creatorId: String = ""
 )
 
 class UserViewModel : ViewModel() {
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
+    private val usersCollection = db.collection("users")
+    private val matchesCollection = db.collection("matches")
+    private val teamsCollection = db.collection("teams")
+
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
 
     private val _plannedMatches = MutableStateFlow<List<PlannedMatch>>(emptyList())
     val plannedMatches: StateFlow<List<PlannedMatch>> = _plannedMatches.asStateFlow()
 
+    private val _userTeams = MutableStateFlow<List<PlannedTeam>>(emptyList())
+    val userTeams: StateFlow<List<PlannedTeam>> = _userTeams.asStateFlow()
+
     private var isSigningIn = false
+
+    init {
+        // Automatic login if session exists
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            viewModelScope.launch {
+                try {
+                    val email = currentUser.email ?: return@launch
+                    val userDoc = usersCollection.document(email).get().await()
+                    if (userDoc.exists()) {
+                        _userProfile.value = userDoc.toObject<UserProfile>()
+                        listenToMatches()
+                        listenToTeams()
+                    }
+                } catch (e: Exception) {
+                    Log.e("UserViewModel", "Auto-login failed: ${e.message}")
+                }
+            }
+        }
+    }
 
     fun signIn(context: Context) {
         if (isSigningIn) return
         isSigningIn = true
 
         val credentialManager = CredentialManager.create(context)
-        val db = AppDatabase.getDatabase(context)
-        val userDao = db.userDao()
 
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
@@ -71,105 +111,83 @@ class UserViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                val result = credentialManager.getCredential(
-                    context = context,
-                    request = request
-                )
-                
+                val result = credentialManager.getCredential(context = context, request = request)
                 val credential = result.credential
+                
                 if (credential is GoogleIdTokenCredential) {
-                    val email = credential.id
+                    val idToken = credential.idToken ?: throw Exception("No ID token found")
+                    val email = credential.id ?: throw Exception("No email found")
+                    val displayName = credential.displayName
+
+                    val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
+                    val authResult = auth.signInWithCredential(firebaseCredential).await()
+                    val firebaseUser = authResult.user ?: throw Exception("Firebase Auth failed")
                     
-                    val existingUser = userDao.getUserByEmail(email)
-                    
-                    if (existingUser != null) {
-                        _userProfile.value = UserProfile(
-                            id = existingUser.id,
-                            name = credential.displayName,
-                            email = email,
-                            profilePictureUrl = credential.profilePictureUri?.toString(),
-                            username = existingUser.username,
-                            gender = existingUser.gender,
-                            ageGroup = existingUser.ageGroup,
-                            city = existingUser.city
-                        )
-                        loadMatches(context, existingUser.id)
+                    val userDoc = usersCollection.document(email).get().await()
+
+                    if (userDoc.exists()) {
+                        _userProfile.value = userDoc.toObject<UserProfile>()
                     } else {
-                        val newUser = User(
-                            username = credential.displayName ?: "",
+                        val newProfile = UserProfile(
+                            id = firebaseUser.uid,
+                            name = displayName ?: firebaseUser.displayName,
                             email = email,
-                            hashedPassword = "",
-                            gender = Gender.UNKNOWN,
-                            ageGroup = AgeGroup.SENIOR_18_45,
-                            isCoach = false,
-                            isAdmin = false,
-                            city = ""
+                            profilePictureUrl = firebaseUser.photoUrl?.toString(),
+                            username = displayName ?: ""
                         )
-                        userDao.insertUser(newUser)
-                        
-                        _userProfile.value = UserProfile(
-                            id = newUser.id,
-                            name = credential.displayName,
-                            email = email,
-                            profilePictureUrl = credential.profilePictureUri?.toString(),
-                            username = newUser.username
-                        )
-                        loadMatches(context, newUser.id)
+                        usersCollection.document(email).set(newProfile).await()
+                        _userProfile.value = newProfile
                     }
-                    Toast.makeText(context, "Welcome ${credential.displayName}", Toast.LENGTH_SHORT).show()
+                    
+                    listenToMatches()
+                    listenToTeams()
+                    Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: NoCredentialException) {
-                Log.e("UserViewModel", "No credentials available.")
-            } catch (e: GetCredentialException) {
-                Log.e("UserViewModel", "SignIn Error: ${e.message}")
             } catch (e: Exception) {
-                Log.e("UserViewModel", "Unknown Error: ${e.message}")
+                Log.e("UserViewModel", "SignIn Error: ${e.message}", e)
+                Toast.makeText(context, "Login failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             } finally {
                 isSigningIn = false
             }
         }
     }
 
-    private fun loadMatches(context: Context, userId: UUID) {
-        val db = AppDatabase.getDatabase(context)
-        viewModelScope.launch {
-            db.matchDao().getMatchesByUser(userId).collectLatest { matches ->
-                _plannedMatches.value = matches.map { 
-                    PlannedMatch(
-                        id = it.id,
-                        modality = it.location ?: "Futsal", // Simplified for now
-                        matchType = it.matchType.name,
-                        dateTime = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(it.scheduledDate)),
-                        location = it.location ?: "",
-                        myTeam = "Team HackYou", // Needs to be real
-                        opponent = it.city ?: "Opponent" // Using city field as opponent for now
-                    )
+    private fun listenToMatches() {
+        // Listen to all matches (Global pool for interaction)
+        matchesCollection.addSnapshotListener { snapshot, e ->
+            if (snapshot != null) {
+                val matches = snapshot.documents.mapNotNull { it.toObject<PlannedMatch>() }
+                val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                _plannedMatches.value = matches.sortedBy { 
+                    try { sdf.parse(it.dateTime)?.time ?: Long.MAX_VALUE } catch (ex: Exception) { Long.MAX_VALUE }
                 }
+            }
+        }
+    }
+
+    private fun listenToTeams() {
+        val user = _userProfile.value ?: return
+        // Listen to teams where user is a creator or member
+        teamsCollection.whereArrayContains("members", user.id).addSnapshotListener { snapshot, e ->
+            if (snapshot != null) {
+                _userTeams.value = snapshot.documents.mapNotNull { it.toObject<PlannedTeam>() }
             }
         }
     }
 
     fun updateProfile(context: Context, username: String, gender: Gender, ageGroup: AgeGroup, city: String) {
         val current = _userProfile.value ?: return
-        val db = AppDatabase.getDatabase(context)
-        val userDao = db.userDao()
-
         viewModelScope.launch {
             try {
-                val userToUpdate = User(
-                    id = current.id,
+                val updatedProfile = current.copy(
                     username = username,
-                    email = current.email,
-                    hashedPassword = "",
-                    gender = gender,
-                    ageGroup = ageGroup,
-                    isCoach = false,
-                    isAdmin = false,
+                    gender = gender.name,
+                    ageGroup = ageGroup.name,
                     city = city
                 )
-                userDao.insertUser(userToUpdate)
-                _userProfile.value = current.copy(username = username, gender = gender, ageGroup = ageGroup, city = city)
-                Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
+                usersCollection.document(current.email).set(updatedProfile).await()
+                _userProfile.value = updatedProfile
+                Toast.makeText(context, "Profile Updated", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Update Error: ${e.message}")
             }
@@ -179,33 +197,20 @@ class UserViewModel : ViewModel() {
     fun signOut(context: Context) {
         val credentialManager = CredentialManager.create(context)
         viewModelScope.launch {
+            auth.signOut()
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
             _userProfile.value = null
             _plannedMatches.value = emptyList()
+            _userTeams.value = emptyList()
         }
     }
 
     fun addMatch(context: Context, match: PlannedMatch) {
         val user = _userProfile.value ?: return
-        val db = AppDatabase.getDatabase(context)
-        
         viewModelScope.launch {
             try {
-                val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).parse(match.dateTime)
-                val matchEntity = Match(
-                    id = match.id,
-                    sportId = UUID.randomUUID(), // Placeholder
-                    matchType = ParticipantType.TEAM,
-                    scheduledDate = date?.time ?: System.currentTimeMillis(),
-                    location = match.location,
-                    city = match.opponent, // Store opponent in city field for this prototype
-                    status = MatchStatus.SCHEDULED,
-                    createdByUserId = user.id
-                )
-                db.matchDao().insertMatch(matchEntity)
-                // Local state will update via loadMatches collection if we observe correctly
-                // For now manual append to state flow to show immediate UI update
-                _plannedMatches.value = _plannedMatches.value + match
+                val matchWithUser = match.copy(createdByUserId = user.id)
+                matchesCollection.document(matchWithUser.id).set(matchWithUser).await()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Add Match Error: ${e.message}")
             }

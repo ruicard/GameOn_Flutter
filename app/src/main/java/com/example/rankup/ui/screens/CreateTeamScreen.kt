@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.rankup.PlannedTeam
 import com.example.rankup.UserProfile
+import com.example.rankup.SportModel
 import com.example.rankup.data.AgeGroup
 import com.example.rankup.data.Gender
 import com.example.rankup.ui.theme.RankUpTheme
@@ -40,6 +41,7 @@ import java.util.*
 fun CreateTeamScreen(
     currentUser: UserProfile,
     allUsers: List<UserProfile>,
+    availableSports: List<SportModel>,
     onBack: () -> Unit,
     onSave: (PlannedTeam) -> Unit,
     modifier: Modifier = Modifier
@@ -58,7 +60,6 @@ fun CreateTeamScreen(
     var captainExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val modalities = listOf("Futsal", "Futebol 11", "Padel")
     val filteredUsers = allUsers.filter { it.name?.contains(captainSearchText, ignoreCase = true) == true }
 
     // Location Logic
@@ -120,10 +121,10 @@ fun CreateTeamScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Modality
+        // Modality - Using availableSports from database
         ExposedDropdownMenuBox(expanded = modalityExpanded, onExpandedChange = { modalityExpanded = !modalityExpanded }) {
             OutlinedTextField(
-                value = selectedModality,
+                value = selectedModality.ifEmpty { "Select modality" },
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Modality") },
@@ -132,8 +133,14 @@ fun CreateTeamScreen(
                 shape = MaterialTheme.shapes.medium
             )
             ExposedDropdownMenu(expanded = modalityExpanded, onDismissRequest = { modalityExpanded = false }) {
-                modalities.forEach { option ->
-                    DropdownMenuItem(text = { Text(option) }, onClick = { selectedModality = option; modalityExpanded = false })
+                availableSports.forEach { sport ->
+                    DropdownMenuItem(
+                        text = { Text(sport.name) }, 
+                        onClick = { 
+                            selectedModality = sport.name
+                            modalityExpanded = false 
+                        }
+                    )
                 }
             }
         }
@@ -245,5 +252,19 @@ fun CreateTeamScreen(
             Text("Create Team", color = Color.White, fontSize = 16.sp)
         }
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun CreateTeamScreenPreview() {
+    RankUpTheme {
+        CreateTeamScreen(
+            currentUser = UserProfile(name = "Rui Cardoso"),
+            allUsers = emptyList(),
+            availableSports = listOf(SportModel(name = "Futsal"), SportModel(name = "Padel")),
+            onBack = {},
+            onSave = {}
+        )
     }
 }

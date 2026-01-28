@@ -25,12 +25,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rankup.PlannedMatch
+import com.example.rankup.PlannedTeam
+import com.example.rankup.SportModel
 import com.example.rankup.ui.theme.RankUpTheme
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlanMatchScreen(
+    availableSports: List<SportModel>,
+    userTeams: List<PlannedTeam>,
+    allTeams: List<PlannedTeam>,
     onSave: (PlannedMatch) -> Unit,
     onBack: () -> Unit, 
     onCancelToHome: () -> Unit, 
@@ -41,7 +46,6 @@ fun PlanMatchScreen(
     // Step 1 states
     var modalityExpanded by remember { mutableStateOf(false) }
     var selectedModality by remember { mutableStateOf("") }
-    val modalities = listOf("Futsal", "Padel")
 
     var matchTypeExpanded by remember { mutableStateOf(false) }
     var selectedMatchType by remember { mutableStateOf("") }
@@ -52,12 +56,14 @@ fun PlanMatchScreen(
     var whereText by remember { mutableStateOf("") }
     var teamExpanded by remember { mutableStateOf(false) }
     var selectedTeam by remember { mutableStateOf("") }
-    val teams = listOf("Team HackYou")
 
     var opponentText by remember { mutableStateOf("") }
     var opponentExpanded by remember { mutableStateOf(false) }
-    val opponents = listOf("Team Badass", "Team Crackers")
-    val filteredOpponents = opponents.filter { it.contains(opponentText, ignoreCase = true) }
+    
+    // Filter opponents: search by name AND exclude the team already selected as "your team"
+    val filteredOpponents = allTeams.filter { 
+        it.name.contains(opponentText, ignoreCase = true) && it.name != selectedTeam 
+    }
 
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
@@ -117,12 +123,12 @@ fun PlanMatchScreen(
                         shape = MaterialTheme.shapes.medium
                     )
                     ExposedDropdownMenu(expanded = modalityExpanded, onDismissRequest = { modalityExpanded = false }) {
-                        modalities.forEach { modality ->
+                        availableSports.forEach { sport ->
                             DropdownMenuItem(
-                                text = { Text(modality) },
+                                text = { Text(sport.name) },
                                 onClick = {
-                                    if (selectedModality != modality) {
-                                        selectedModality = modality
+                                    if (selectedModality != sport.name) {
+                                        selectedModality = sport.name
                                         selectedMatchType = ""
                                     }
                                     modalityExpanded = false
@@ -193,6 +199,8 @@ fun PlanMatchScreen(
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                // "Select your team" - Only teams where the user is a member
                 ExposedDropdownMenuBox(
                     expanded = teamExpanded,
                     onExpandedChange = { teamExpanded = !teamExpanded }
@@ -206,11 +214,15 @@ fun PlanMatchScreen(
                         shape = MaterialTheme.shapes.medium
                     )
                     ExposedDropdownMenu(expanded = teamExpanded, onDismissRequest = { teamExpanded = false }) {
-                        teams.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { selectedTeam = it; teamExpanded = false }) }
+                        userTeams.forEach { team -> 
+                            DropdownMenuItem(text = { Text(team.name) }, onClick = { selectedTeam = team.name; teamExpanded = false }) 
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                // "Select your opponent" - Search through all teams in Firestore excluding your selected team
                 ExposedDropdownMenuBox(
                     expanded = opponentExpanded && filteredOpponents.isNotEmpty(),
                     onExpandedChange = { opponentExpanded = !opponentExpanded }
@@ -224,7 +236,9 @@ fun PlanMatchScreen(
                         trailingIcon = { Icon(Icons.Default.Search, null) }
                     )
                     ExposedDropdownMenu(expanded = opponentExpanded && filteredOpponents.isNotEmpty(), onDismissRequest = { opponentExpanded = false }) {
-                        filteredOpponents.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { opponentText = it; opponentExpanded = false }) }
+                        filteredOpponents.forEach { team -> 
+                            DropdownMenuItem(text = { Text(team.name) }, onClick = { opponentText = team.name; opponentExpanded = false }) 
+                        }
                     }
                 }
 
@@ -279,5 +293,5 @@ fun PlanMatchScreen(
 @Preview(showBackground = true)
 @Composable
 fun PlanMatchStep1Preview() {
-    RankUpTheme { PlanMatchScreen(onSave = {}, onBack = {}, onCancelToHome = {}) }
+    RankUpTheme { PlanMatchScreen(availableSports = emptyList(), userTeams = emptyList(), allTeams = emptyList(), onSave = {}, onBack = {}, onCancelToHome = {}) }
 }

@@ -50,7 +50,9 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     val userProfile: UserProfile? by userViewModel.userProfile.collectAsStateWithLifecycle()
     val plannedMatches: List<PlannedMatch> by userViewModel.plannedMatches.collectAsStateWithLifecycle()
     val userTeams: List<PlannedTeam> by userViewModel.userTeams.collectAsStateWithLifecycle()
+    val allTeams: List<PlannedTeam> by userViewModel.allTeams.collectAsStateWithLifecycle()
     val allUsers: List<UserProfile> by userViewModel.allUsers.collectAsStateWithLifecycle()
+    val availableSports: List<SportModel> by userViewModel.availableSports.collectAsStateWithLifecycle()
     val isInitializing by userViewModel.isInitializing.collectAsStateWithLifecycle()
     
     val context = LocalContext.current
@@ -65,6 +67,9 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
         Box(modifier = Modifier.fillMaxSize())
     } else if (showPlanMatch) {
         PlanMatchScreen(
+            availableSports = availableSports,
+            userTeams = userTeams,
+            allTeams = allTeams,
             onSave = { match ->
                 userViewModel.addMatch(context, match)
                 showPlanMatch = false
@@ -76,6 +81,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
         CreateTeamScreen(
             currentUser = userProfile!!,
             allUsers = allUsers,
+            availableSports = availableSports,
             onBack = { showCreateTeam = false },
             onSave = { team ->
                 userViewModel.createTeam(context, team)
@@ -105,22 +111,47 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     } else {
         NavigationSuiteScaffold(
             navigationSuiteItems = {
+                // Account item
                 item(
-                    icon = { Icon(AppDestinations.ACCOUNT.icon, null, tint = if (userProfile != null) Color.Unspecified else Color.LightGray) },
-                    label = { Text(AppDestinations.ACCOUNT.label, color = if (userProfile != null) Color.Unspecified else Color.LightGray) },
+                    icon = { 
+                        Icon(
+                            AppDestinations.ACCOUNT.icon, 
+                            null,
+                            tint = if (userProfile != null) Color.Unspecified else Color.LightGray
+                        ) 
+                    },
+                    label = { 
+                        Text(
+                            AppDestinations.ACCOUNT.label,
+                            color = if (userProfile != null) Color.Unspecified else Color.LightGray
+                        ) 
+                    },
                     selected = currentDestination == AppDestinations.ACCOUNT,
                     onClick = { if (userProfile != null) currentDestination = AppDestinations.ACCOUNT },
                     enabled = userProfile != null
                 )
+                // Home item
                 item(
                     icon = { Icon(AppDestinations.HOME.icon, null) },
                     label = { Text(AppDestinations.HOME.label) },
                     selected = currentDestination == AppDestinations.HOME,
                     onClick = { currentDestination = AppDestinations.HOME }
                 )
+                // Teams item
                 item(
-                    icon = { Icon(AppDestinations.TEAMS.icon, null, tint = if (userProfile != null) Color.Unspecified else Color.LightGray) },
-                    label = { Text(AppDestinations.TEAMS.label, color = if (userProfile != null) Color.Unspecified else Color.LightGray) },
+                    icon = { 
+                        Icon(
+                            AppDestinations.TEAMS.icon, 
+                            null,
+                            tint = if (userProfile != null) Color.Unspecified else Color.LightGray
+                        ) 
+                    },
+                    label = { 
+                        Text(
+                            AppDestinations.TEAMS.label,
+                            color = if (userProfile != null) Color.Unspecified else Color.LightGray
+                        ) 
+                    },
                     selected = currentDestination == AppDestinations.TEAMS,
                     onClick = { if (userProfile != null) currentDestination = AppDestinations.TEAMS },
                     enabled = userProfile != null

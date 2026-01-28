@@ -59,12 +59,19 @@ data class PlannedTeam(
     val captainId: String = ""
 )
 
+data class SportModel(
+    val id: String = "",
+    val name: String = "",
+    val description: String = ""
+)
+
 class UserViewModel : ViewModel() {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     private val usersCollection = db.collection("users")
     private val matchesCollection = db.collection("matches")
     private val teamsCollection = db.collection("teams")
+    private val sportsCollection = db.collection("sports")
 
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
@@ -75,8 +82,14 @@ class UserViewModel : ViewModel() {
     private val _userTeams = MutableStateFlow<List<PlannedTeam>>(emptyList())
     val userTeams: StateFlow<List<PlannedTeam>> = _userTeams.asStateFlow()
 
+    private val _allTeams = MutableStateFlow<List<PlannedTeam>>(emptyList())
+    val allTeams: StateFlow<List<PlannedTeam>> = _allTeams.asStateFlow()
+
     private val _allUsers = MutableStateFlow<List<UserProfile>>(emptyList())
     val allUsers: StateFlow<List<UserProfile>> = _allUsers.asStateFlow()
+
+    private val _availableSports = MutableStateFlow<List<SportModel>>(emptyList())
+    val availableSports: StateFlow<List<SportModel>> = _availableSports.asStateFlow()
 
     private val _isInitializing = MutableStateFlow(true)
     val isInitializing: StateFlow<Boolean> = _isInitializing.asStateFlow()
@@ -95,6 +108,8 @@ class UserViewModel : ViewModel() {
                         listenToMatches()
                         listenToTeams()
                         fetchAllUsers()
+                        fetchAllTeams()
+                        fetchSports()
                     }
                 } catch (e: Exception) {
                     Log.e("UserViewModel", "Auto-login failed: ${e.message}")
@@ -104,6 +119,18 @@ class UserViewModel : ViewModel() {
             }
         } else {
             _isInitializing.value = false
+            fetchSports() // Fetch sports even if not logged in for previews/initial load
+        }
+    }
+
+    private fun fetchSports() {
+        viewModelScope.launch {
+            try {
+                val snapshot = sportsCollection.get().await()
+                _availableSports.value = snapshot.documents.mapNotNull { it.toObject<SportModel>() }
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Error fetching sports: ${e.message}")
+            }
         }
     }
 
@@ -114,6 +141,14 @@ class UserViewModel : ViewModel() {
                 _allUsers.value = snapshot.documents.mapNotNull { it.toObject<UserProfile>() }
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Error fetching users: ${e.message}")
+            }
+        }
+    }
+
+    private fun fetchAllTeams() {
+        teamsCollection.addSnapshotListener { snapshot, e ->
+            if (snapshot != null) {
+                _allTeams.value = snapshot.documents.mapNotNull { it.toObject<PlannedTeam>() }
             }
         }
     }
@@ -167,6 +202,8 @@ class UserViewModel : ViewModel() {
                     listenToMatches()
                     listenToTeams()
                     fetchAllUsers()
+                    fetchAllTeams()
+                    fetchSports()
                     Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {

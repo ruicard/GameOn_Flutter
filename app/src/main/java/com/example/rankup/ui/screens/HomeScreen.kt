@@ -150,7 +150,10 @@ fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column {
-                Text("Upcoming match", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    text = "Upcoming match • ${match.modality}", 
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
                 Text(match.location, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
             }
         }

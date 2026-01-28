@@ -52,7 +52,11 @@ data class PlannedTeam(
     val name: String = "",
     val sport: String = "",
     val members: List<String> = emptyList(),
-    val creatorId: String = ""
+    val creatorId: String = "",
+    val gender: String = Gender.UNKNOWN.name,
+    val ageGroup: String = AgeGroup.SENIOR_18_45.name,
+    val city: String = "",
+    val captainId: String = ""
 )
 
 class UserViewModel : ViewModel() {
@@ -71,10 +75,15 @@ class UserViewModel : ViewModel() {
     private val _userTeams = MutableStateFlow<List<PlannedTeam>>(emptyList())
     val userTeams: StateFlow<List<PlannedTeam>> = _userTeams.asStateFlow()
 
+    private val _allUsers = MutableStateFlow<List<UserProfile>>(emptyList())
+    val allUsers: StateFlow<List<UserProfile>> = _allUsers.asStateFlow()
+
+    private val _isInitializing = MutableStateFlow(true)
+    val isInitializing: StateFlow<Boolean> = _isInitializing.asStateFlow()
+
     private var isSigningIn = false
 
     init {
-        // Automatic login if session exists
         val currentUser = auth.currentUser
         if (currentUser != null) {
             viewModelScope.launch {
@@ -85,10 +94,26 @@ class UserViewModel : ViewModel() {
                         _userProfile.value = userDoc.toObject<UserProfile>()
                         listenToMatches()
                         listenToTeams()
+                        fetchAllUsers()
                     }
                 } catch (e: Exception) {
                     Log.e("UserViewModel", "Auto-login failed: ${e.message}")
+                } finally {
+                    _isInitializing.value = false
                 }
+            }
+        } else {
+            _isInitializing.value = false
+        }
+    }
+
+    private fun fetchAllUsers() {
+        viewModelScope.launch {
+            try {
+                val snapshot = usersCollection.get().await()
+                _allUsers.value = snapshot.documents.mapNotNull { it.toObject<UserProfile>() }
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Error fetching users: ${e.message}")
             }
         }
     }
@@ -141,6 +166,7 @@ class UserViewModel : ViewModel() {
                     
                     listenToMatches()
                     listenToTeams()
+                    fetchAllUsers()
                     Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -153,7 +179,6 @@ class UserViewModel : ViewModel() {
     }
 
     private fun listenToMatches() {
-        // Listen to all matches (Global pool for interaction)
         matchesCollection.addSnapshotListener { snapshot, e ->
             if (snapshot != null) {
                 val matches = snapshot.documents.mapNotNull { it.toObject<PlannedMatch>() }
@@ -167,7 +192,6 @@ class UserViewModel : ViewModel() {
 
     private fun listenToTeams() {
         val user = _userProfile.value ?: return
-        // Listen to teams where user is a creator or member
         teamsCollection.whereArrayContains("members", user.id).addSnapshotListener { snapshot, e ->
             if (snapshot != null) {
                 _userTeams.value = snapshot.documents.mapNotNull { it.toObject<PlannedTeam>() }
@@ -211,8 +235,45 @@ class UserViewModel : ViewModel() {
             try {
                 val matchWithUser = match.copy(createdByUserId = user.id)
                 matchesCollection.document(matchWithUser.id).set(matchWithUser).await()
+                Toast.makeText(context, "Match saved!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Add Match Error: ${e.message}")
+            }
+        }
+    }
+
+    fun updateMatch(context: Context, match: PlannedMatch) {
+        viewModelScope.launch {
+            try {
+                matchesCollection.document(match.id).set(match).await()
+                Toast.makeText(context, "Match updated!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Update Match Error: ${e.message}")
+                Toast.makeText(context, "Failed to update match", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun cancelMatch(context: Context, matchId: String) {
+        viewModelScope.launch {
+            try {
+                matchesCollection.document(matchId).delete().await()
+                Toast.makeText(context, "Match cancelled", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Cancel Match Error: ${e.message}")
+                Toast.makeText(context, "Failed to cancel match", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun createTeam(context: Context, team: PlannedTeam) {
+        viewModelScope.launch {
+            try {
+                teamsCollection.document(team.id).set(team).await()
+                Toast.makeText(context, "Team created!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Create Team Error: ${e.message}")
+                Toast.makeText(context, "Failed to create team", Toast.LENGTH_SHORT).show()
             }
         }
     }

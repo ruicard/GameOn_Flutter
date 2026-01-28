@@ -15,12 +15,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -28,10 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.rankup.ui.components.UserProfileTopBar
-import com.example.rankup.ui.screens.AccountScreen
-import com.example.rankup.ui.screens.HomeScreen
-import com.example.rankup.ui.screens.TeamsScreen
-import com.example.rankup.ui.screens.PlanMatchScreen
+import com.example.rankup.ui.screens.*
 import com.example.rankup.ui.theme.RankUpTheme
 
 class MainActivity : ComponentActivity() {
@@ -50,19 +43,27 @@ class MainActivity : ComponentActivity() {
 fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
     var showPlanMatch by rememberSaveable { mutableStateOf(false) }
+    var showCreateTeam by rememberSaveable { mutableStateOf(false) }
+    var selectedMatchForDetails by remember { mutableStateOf<PlannedMatch?>(null) }
+    var matchToEdit by remember { mutableStateOf<PlannedMatch?>(null) }
     
     val userProfile: UserProfile? by userViewModel.userProfile.collectAsStateWithLifecycle()
     val plannedMatches: List<PlannedMatch> by userViewModel.plannedMatches.collectAsStateWithLifecycle()
+    val userTeams: List<PlannedTeam> by userViewModel.userTeams.collectAsStateWithLifecycle()
+    val allUsers: List<UserProfile> by userViewModel.allUsers.collectAsStateWithLifecycle()
+    val isInitializing by userViewModel.isInitializing.collectAsStateWithLifecycle()
     
     val context = LocalContext.current
 
-    LaunchedEffect(Unit) {
-        if (userProfile == null) {
+    LaunchedEffect(isInitializing, userProfile) {
+        if (!isInitializing && userProfile == null) {
             userViewModel.signIn(context)
         }
     }
 
-    if (showPlanMatch) {
+    if (isInitializing) {
+        Box(modifier = Modifier.fillMaxSize())
+    } else if (showPlanMatch) {
         PlanMatchScreen(
             onSave = { match ->
                 userViewModel.addMatch(context, match)
@@ -71,50 +72,55 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             onBack = { showPlanMatch = false },
             onCancelToHome = { showPlanMatch = false }
         )
+    } else if (showCreateTeam && userProfile != null) {
+        CreateTeamScreen(
+            currentUser = userProfile!!,
+            allUsers = allUsers,
+            onBack = { showCreateTeam = false },
+            onSave = { team ->
+                userViewModel.createTeam(context, team)
+                showCreateTeam = false
+            }
+        )
+    } else if (matchToEdit != null) {
+        EditMatchScreen(
+            match = matchToEdit!!,
+            onSave = { updatedMatch ->
+                userViewModel.updateMatch(context, updatedMatch)
+                matchToEdit = null
+                selectedMatchForDetails = updatedMatch
+            },
+            onBack = { matchToEdit = null }
+        )
+    } else if (selectedMatchForDetails != null) {
+        MatchDetailsScreen(
+            match = selectedMatchForDetails!!,
+            onBack = { selectedMatchForDetails = null },
+            onEdit = { matchToEdit = selectedMatchForDetails },
+            onCancelMatch = {
+                userViewModel.cancelMatch(context, selectedMatchForDetails!!.id)
+                selectedMatchForDetails = null
+            }
+        )
     } else {
         NavigationSuiteScaffold(
             navigationSuiteItems = {
-                // Account item
                 item(
-                    icon = { 
-                        Icon(
-                            AppDestinations.ACCOUNT.icon, 
-                            contentDescription = null,
-                            tint = if (userProfile != null) Color.Unspecified else Color.LightGray
-                        ) 
-                    },
-                    label = { 
-                        Text(
-                            AppDestinations.ACCOUNT.label,
-                            color = if (userProfile != null) Color.Unspecified else Color.LightGray
-                        ) 
-                    },
+                    icon = { Icon(AppDestinations.ACCOUNT.icon, null, tint = if (userProfile != null) Color.Unspecified else Color.LightGray) },
+                    label = { Text(AppDestinations.ACCOUNT.label, color = if (userProfile != null) Color.Unspecified else Color.LightGray) },
                     selected = currentDestination == AppDestinations.ACCOUNT,
                     onClick = { if (userProfile != null) currentDestination = AppDestinations.ACCOUNT },
                     enabled = userProfile != null
                 )
-                // Home item
                 item(
-                    icon = { Icon(AppDestinations.HOME.icon, contentDescription = null) },
+                    icon = { Icon(AppDestinations.HOME.icon, null) },
                     label = { Text(AppDestinations.HOME.label) },
                     selected = currentDestination == AppDestinations.HOME,
                     onClick = { currentDestination = AppDestinations.HOME }
                 )
-                // Teams item
                 item(
-                    icon = { 
-                        Icon(
-                            AppDestinations.TEAMS.icon, 
-                            contentDescription = null,
-                            tint = if (userProfile != null) Color.Unspecified else Color.LightGray
-                        ) 
-                    },
-                    label = { 
-                        Text(
-                            AppDestinations.TEAMS.label,
-                            color = if (userProfile != null) Color.Unspecified else Color.LightGray
-                        ) 
-                    },
+                    icon = { Icon(AppDestinations.TEAMS.icon, null, tint = if (userProfile != null) Color.Unspecified else Color.LightGray) },
+                    label = { Text(AppDestinations.TEAMS.label, color = if (userProfile != null) Color.Unspecified else Color.LightGray) },
                     selected = currentDestination == AppDestinations.TEAMS,
                     onClick = { if (userProfile != null) currentDestination = AppDestinations.TEAMS },
                     enabled = userProfile != null
@@ -123,11 +129,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
         ) {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
-                topBar = {
-                    if (userProfile != null) {
-                        UserProfileTopBar(userProfile)
-                    }
-                }
+                topBar = { if (userProfile != null) UserProfileTopBar(userProfile) }
             ) { innerPadding ->
                 Box(modifier = Modifier.padding(innerPadding)) {
                     when (currentDestination) {
@@ -135,7 +137,8 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                             userProfile = userProfile,
                             plannedMatches = plannedMatches,
                             onPlanMatchClick = { showPlanMatch = true },
-                            onSignInClick = { userViewModel.signIn(context) }
+                            onSignInClick = { userViewModel.signIn(context) },
+                            onMatchClick = { match -> selectedMatchForDetails = match }
                         )
                         AppDestinations.ACCOUNT -> AccountScreen(
                             userProfile = userProfile,
@@ -145,7 +148,10 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                             onSignInClick = { userViewModel.signIn(context) },
                             onSignOutClick = { userViewModel.signOut(context) }
                         )
-                        AppDestinations.TEAMS -> TeamsScreen()
+                        AppDestinations.TEAMS -> TeamsScreen(
+                            teams = userTeams,
+                            onCreateTeamClick = { showCreateTeam = true }
+                        )
                     }
                 }
             }

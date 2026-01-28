@@ -1,6 +1,7 @@
 package com.example.rankup.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -36,6 +37,7 @@ fun HomeScreen(
     plannedMatches: List<PlannedMatch>,
     onPlanMatchClick: () -> Unit,
     onSignInClick: () -> Unit,
+    onMatchClick: (PlannedMatch) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -73,13 +75,18 @@ fun HomeScreen(
             horizontalAlignment = Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            item { Spacer(modifier = Modifier.height(8.dp)); UpcomingMatchCard(sortedMatches.first()) }
+            item { 
+                Spacer(modifier = Modifier.height(8.dp))
+                UpcomingMatchCard(sortedMatches.first(), onClick = { onMatchClick(sortedMatches.first()) }) 
+            }
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text("Next matches", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                        items(sortedMatches) { match -> NextMatchCard(match) }
+                        items(sortedMatches) { match -> 
+                            NextMatchCard(match, onClick = { onMatchClick(match) }) 
+                        }
                     }
                 }
             }
@@ -115,7 +122,7 @@ fun HomeScreen(
 }
 
 @Composable
-fun UpcomingMatchCard(match: PlannedMatch) {
+fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
     val calendar = Calendar.getInstance()
     var dayOfWeek = "---"
     var dayOfMonth = "--"
@@ -128,7 +135,12 @@ fun UpcomingMatchCard(match: PlannedMatch) {
             dayOfMonth = SimpleDateFormat("dd", Locale.getDefault()).format(date)
         }
     } catch (e: Exception) {}
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), 
+        shape = RoundedCornerShape(24.dp), 
+        colors = CardDefaults.cardColors(containerColor = Color.White), 
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
         Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE0E0E0)), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -146,14 +158,19 @@ fun UpcomingMatchCard(match: PlannedMatch) {
 }
 
 @Composable
-fun NextMatchCard(match: PlannedMatch) {
+fun NextMatchCard(match: PlannedMatch, onClick: () -> Unit) {
     var formattedDate = match.dateTime
     try {
         val sdfInput = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
         val date = sdfInput.parse(match.dateTime)
         if (date != null) formattedDate = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(date)
     } catch (e: Exception) {}
-    Card(modifier = Modifier.width(220.dp).height(180.dp), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
+        shape = RoundedCornerShape(24.dp), 
+        colors = CardDefaults.cardColors(containerColor = Color.White), 
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -184,7 +201,7 @@ fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier) {
 
 @Composable
 fun InviteFriendsCard(onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(modifier = Modifier.padding(32.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Default.SentimentSatisfiedAlt, null, modifier = Modifier.size(32.dp))
             Spacer(modifier = Modifier.height(12.dp))
@@ -200,7 +217,7 @@ fun HomeScreenPreview() {
         HomeScreen(
             userProfile = UserProfile(id = UUID.randomUUID().toString(), name = "Rui Cardoso", email = "rui@example.com", profilePictureUrl = null),
             plannedMatches = listOf(PlannedMatch(modality = "Football", dateTime = "12/09/2025 18:00", location = "Campo Futebol Bosch", myTeam = "Team HackYou", opponent = "Team Badass")),
-            onPlanMatchClick = {}, onSignInClick = {}
+            onPlanMatchClick = {}, onSignInClick = {}, onMatchClick = {}
         )
     }
 }

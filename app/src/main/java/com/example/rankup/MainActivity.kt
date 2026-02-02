@@ -70,6 +70,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             availableSports = availableSports,
             userTeams = userTeams,
             allTeams = allTeams,
+            allUsers = allUsers,
             onSave = { match ->
                 userViewModel.addMatch(context, match)
                 showPlanMatch = false
@@ -111,7 +112,6 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     } else {
         NavigationSuiteScaffold(
             navigationSuiteItems = {
-                // Account item
                 item(
                     icon = { 
                         Icon(
@@ -130,14 +130,12 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                     onClick = { if (userProfile != null) currentDestination = AppDestinations.ACCOUNT },
                     enabled = userProfile != null
                 )
-                // Home item
                 item(
                     icon = { Icon(AppDestinations.HOME.icon, null) },
                     label = { Text(AppDestinations.HOME.label) },
                     selected = currentDestination == AppDestinations.HOME,
                     onClick = { currentDestination = AppDestinations.HOME }
                 )
-                // Teams item
                 item(
                     icon = { 
                         Icon(

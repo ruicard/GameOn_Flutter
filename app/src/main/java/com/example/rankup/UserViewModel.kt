@@ -16,6 +16,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.toObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +45,8 @@ data class PlannedMatch(
     val location: String = "",
     val myTeam: String = "",
     val opponent: String = "",
-    val createdByUserId: String = ""
+    val createdByUserId: String = "",
+    val invitedPlayers: List<String> = emptyList()
 )
 
 data class PlannedTeam(
@@ -62,7 +64,9 @@ data class PlannedTeam(
 data class SportModel(
     val id: String = "",
     val name: String = "",
-    val description: String = ""
+    val description: String = "",
+    @get:PropertyName("max_players_per_team") @set:PropertyName("max_players_per_team") var maxPlayersTeam: Int = 5,
+    @get:PropertyName("min_players_per_match") @set:PropertyName("min_players_per_match") var minPlayersMatch: Int = 2
 )
 
 class UserViewModel : ViewModel() {
@@ -119,15 +123,19 @@ class UserViewModel : ViewModel() {
             }
         } else {
             _isInitializing.value = false
-            fetchSports() // Fetch sports even if not logged in for previews/initial load
+            fetchSports()
         }
     }
 
     private fun fetchSports() {
         viewModelScope.launch {
             try {
-                val snapshot = sportsCollection.get().await()
-                _availableSports.value = snapshot.documents.mapNotNull { it.toObject<SportModel>() }
+                sportsCollection.addSnapshotListener { snapshot, e ->
+                    if (e != null) return@addSnapshotListener
+                    if (snapshot != null) {
+                        _availableSports.value = snapshot.documents.mapNotNull { it.toObject<SportModel>()?.copy(id = it.id) }.sortedBy { it.name }
+                    }
+                }
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Error fetching sports: ${e.message}")
             }

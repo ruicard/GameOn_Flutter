@@ -65,8 +65,8 @@ data class SportModel(
     val id: String = "",
     val name: String = "",
     val description: String = "",
-    @get:PropertyName("max_players_per_team") @set:PropertyName("max_players_per_team") var maxPlayersTeam: Int = 5,
-    @get:PropertyName("min_players_per_match") @set:PropertyName("min_players_per_match") var minPlayersMatch: Int = 2
+    @get:PropertyName("maxPlayersPerTeam") @set:PropertyName("maxPlayersPerTeam") var maxPlayersTeam: Int = 5,
+    @get:PropertyName("minPlayersPerMatch") @set:PropertyName("minPlayersPerMatch") var minPlayersMatch: Int = 2
 )
 
 class UserViewModel : ViewModel() {

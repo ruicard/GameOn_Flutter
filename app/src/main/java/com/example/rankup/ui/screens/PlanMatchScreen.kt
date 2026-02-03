@@ -264,7 +264,7 @@ fun PlanMatchScreen(
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    Text(text = invitedPlayers.size.toString() + " Invites (max: " + maxPlayersMatch + ")", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
+                    Text(text = invitedPlayers.size.toString() + " Invites (min: " + minPlayersNeeded + ", max: " + maxPlayersMatch + ")", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     LazyColumn(

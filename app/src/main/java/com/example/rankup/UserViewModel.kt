@@ -66,7 +66,7 @@ data class SportModel(
     val name: String = "",
     val description: String = "",
     @get:PropertyName("maxPlayersPerTeam") @set:PropertyName("maxPlayersPerTeam") var maxPlayersTeam: Int = 5,
-    @get:PropertyName("minPlayersPerMatch") @set:PropertyName("minPlayersPerMatch") var minPlayersMatch: Int = 2
+    @get:PropertyName("minPlayersMatch") @set:PropertyName("minPlayersMatch") var minPlayersMatch: Int = 2
 )
 
 class UserViewModel : ViewModel() {
@@ -131,7 +131,6 @@ class UserViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 sportsCollection.addSnapshotListener { snapshot, e ->
-                    if (e != null) return@addSnapshotListener
                     if (snapshot != null) {
                         _availableSports.value = snapshot.documents.mapNotNull { it.toObject<SportModel>()?.copy(id = it.id) }.sortedBy { it.name }
                     }
@@ -181,32 +180,25 @@ class UserViewModel : ViewModel() {
             try {
                 val result = credentialManager.getCredential(context = context, request = request)
                 val credential = result.credential
-                
                 if (credential is GoogleIdTokenCredential) {
-                    val idToken = credential.idToken ?: throw Exception("No ID token found")
-                    val email = credential.id ?: throw Exception("No email found")
-                    val displayName = credential.displayName
-
-                    val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
+                    val firebaseCredential = GoogleAuthProvider.getCredential(credential.idToken, null)
                     val authResult = auth.signInWithCredential(firebaseCredential).await()
                     val firebaseUser = authResult.user ?: throw Exception("Firebase Auth failed")
-                    
+                    val email = firebaseUser.email ?: credential.id
                     val userDoc = usersCollection.document(email).get().await()
-
                     if (userDoc.exists()) {
                         _userProfile.value = userDoc.toObject<UserProfile>()
                     } else {
                         val newProfile = UserProfile(
                             id = firebaseUser.uid,
-                            name = displayName ?: firebaseUser.displayName,
+                            name = firebaseUser.displayName,
                             email = email,
                             profilePictureUrl = firebaseUser.photoUrl?.toString(),
-                            username = displayName ?: ""
+                            username = firebaseUser.displayName ?: ""
                         )
                         usersCollection.document(email).set(newProfile).await()
                         _userProfile.value = newProfile
                     }
-                    
                     listenToMatches()
                     listenToTeams()
                     fetchAllUsers()
@@ -215,8 +207,7 @@ class UserViewModel : ViewModel() {
                     Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Log.e("UserViewModel", "SignIn Error: ${e.message}", e)
-                Toast.makeText(context, "Login failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Log.e("UserViewModel", "SignIn Error: ${e.message}")
             } finally {
                 isSigningIn = false
             }
@@ -248,12 +239,7 @@ class UserViewModel : ViewModel() {
         val current = _userProfile.value ?: return
         viewModelScope.launch {
             try {
-                val updatedProfile = current.copy(
-                    username = username,
-                    gender = gender.name,
-                    ageGroup = ageGroup.name,
-                    city = city
-                )
+                val updatedProfile = current.copy(username = username, gender = gender.name, ageGroup = ageGroup.name, city = city)
                 usersCollection.document(current.email).set(updatedProfile).await()
                 _userProfile.value = updatedProfile
                 Toast.makeText(context, "Profile Updated", Toast.LENGTH_SHORT).show()
@@ -294,7 +280,6 @@ class UserViewModel : ViewModel() {
                 Toast.makeText(context, "Match updated!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Update Match Error: ${e.message}")
-                Toast.makeText(context, "Failed to update match", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -306,7 +291,6 @@ class UserViewModel : ViewModel() {
                 Toast.makeText(context, "Match cancelled", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Cancel Match Error: ${e.message}")
-                Toast.makeText(context, "Failed to cancel match", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -318,7 +302,28 @@ class UserViewModel : ViewModel() {
                 Toast.makeText(context, "Team created!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Create Team Error: ${e.message}")
-                Toast.makeText(context, "Failed to create team", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun updateTeam(context: Context, team: PlannedTeam) {
+        viewModelScope.launch {
+            try {
+                teamsCollection.document(team.id).set(team).await()
+                Toast.makeText(context, "Team updated!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Update Team Error: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteTeam(context: Context, teamId: String) {
+        viewModelScope.launch {
+            try {
+                teamsCollection.document(teamId).delete().await()
+                Toast.makeText(context, "Team deleted", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Delete Team Error: ${e.message}")
             }
         }
     }

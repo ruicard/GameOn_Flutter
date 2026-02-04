@@ -46,6 +46,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     var showCreateTeam by rememberSaveable { mutableStateOf(false) }
     var selectedMatchForDetails by remember { mutableStateOf<PlannedMatch?>(null) }
     var matchToEdit by remember { mutableStateOf<PlannedMatch?>(null) }
+    var selectedTeamForDetails by remember { mutableStateOf<PlannedTeam?>(null) }
     
     val userProfile: UserProfile? by userViewModel.userProfile.collectAsStateWithLifecycle()
     val plannedMatches: List<PlannedMatch> by userViewModel.plannedMatches.collectAsStateWithLifecycle()
@@ -87,6 +88,22 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             onSave = { team ->
                 userViewModel.createTeam(context, team)
                 showCreateTeam = false
+            }
+        )
+    } else if (selectedTeamForDetails != null && userProfile != null) {
+        TeamDetailsScreen(
+            team = selectedTeamForDetails!!,
+            currentUser = userProfile!!,
+            allUsers = allUsers,
+            availableSports = availableSports,
+            onBack = { selectedTeamForDetails = null },
+            onSave = { updatedTeam ->
+                userViewModel.updateTeam(context, updatedTeam)
+                selectedTeamForDetails = null
+            },
+            onDelete = { teamId ->
+                userViewModel.deleteTeam(context, teamId)
+                selectedTeamForDetails = null
             }
         )
     } else if (matchToEdit != null) {
@@ -179,6 +196,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                         )
                         AppDestinations.TEAMS -> TeamsScreen(
                             teams = userTeams,
+                            onTeamClick = { team -> selectedTeamForDetails = team },
                             onCreateTeamClick = { showCreateTeam = true }
                         )
                     }

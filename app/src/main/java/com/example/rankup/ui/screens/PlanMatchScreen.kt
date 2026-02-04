@@ -238,7 +238,7 @@ fun PlanMatchScreen(
                     val searchEnabled = invitedPlayers.size < maxPlayersMatch
                     ExposedDropdownMenuBox(
                         expanded = playerSearchExpanded && filteredPlayers.isNotEmpty() && searchEnabled,
-                        onExpandedChange = { if (searchEnabled) playerSearchExpanded = !playerSearchExpanded }
+                        onExpandedChange = { if (invitedPlayers.size < maxPlayersMatch) playerSearchExpanded = !playerSearchExpanded }
                     ) {
                         OutlinedTextField(
                             value = playerSearchText,
@@ -249,7 +249,7 @@ fun PlanMatchScreen(
                             trailingIcon = { Icon(Icons.Default.Search, null) },
                             enabled = searchEnabled
                         )
-                        ExposedDropdownMenu(expanded = playerSearchExpanded && filteredPlayers.isNotEmpty() && searchEnabled, onDismissRequest = { playerSearchExpanded = false }) {
+                        ExposedDropdownMenu(expanded = playerSearchExpanded && filteredPlayers.isNotEmpty(), onDismissRequest = { playerSearchExpanded = false }) {
                             filteredPlayers.forEach { user -> 
                                 DropdownMenuItem(
                                     text = { Text(user.name ?: user.email) }, 
@@ -264,7 +264,7 @@ fun PlanMatchScreen(
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    Text(text = invitedPlayers.size.toString() + " Invites (min: " + minPlayersNeeded + ", max: " + maxPlayersMatch + ")", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
+                    Text(text = "Invites", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     LazyColumn(
@@ -288,8 +288,6 @@ fun PlanMatchScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                
-                // VALIDATION RULE: Save button enabled based on min players for "Player" type
                 val allFilled = selectedDateTime.isNotEmpty() && whereText.isNotEmpty() && (
                     (selectedMatchType == "Team" && selectedTeam.isNotEmpty() && opponentText.isNotEmpty()) ||
                     (selectedMatchType == "Player" && invitedPlayers.size >= minPlayersNeeded)
@@ -299,23 +297,8 @@ fun PlanMatchScreen(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = onCancelToHome,
-                        modifier = Modifier.weight(1f).height(56.dp))
-                    {
-                        Text("Cancel")
-                    }
-                    Button(
-                        onClick = { step = 3 }, 
-                        enabled = allFilled, 
-                        modifier = Modifier.weight(1f).height(56.dp), 
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Black,
-                            disabledContainerColor = Color.LightGray
-                        )
-                    ) { 
-                        Text("Save") 
-                    }
+                    OutlinedButton(onClick = onCancelToHome, modifier = Modifier.weight(1f).height(56.dp)) { Text("Cancel") }
+                    Button(onClick = { step = 3 }, enabled = allFilled, modifier = Modifier.weight(1f).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("Save") }
                 }
             }
             3 -> {

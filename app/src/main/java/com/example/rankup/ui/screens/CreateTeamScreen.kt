@@ -67,8 +67,6 @@ fun CreateTeamScreen(
     
     var playerSearchText by remember { mutableStateOf("") }
     var playerSearchExpanded by remember { mutableStateOf(false) }
-    
-    // Initialize members with current user
     val selectedMembers = remember { mutableStateListOf<UserProfile>(currentUser) }
 
     val selectedSportModel = availableSports.find { it.name == selectedModalityName }
@@ -173,13 +171,11 @@ fun CreateTeamScreen(
                                 DropdownMenuItem(
                                     text = { Text(user.name ?: user.email) },
                                     onClick = {
-                                        val oldCaptain = selectedCaptain
                                         selectedCaptain = user
                                         captainSearchText = user.name ?: user.email
                                         captainExpanded = false
                                         
-                                        // Approach: Replace old captain with new captain in the list
-                                        // or simply ensure new captain is first and labeled.
+                                        // Update list: move new captain to first position, remove old reference if any
                                         selectedMembers.removeAll { it.id == user.id }
                                         selectedMembers.add(0, user)
                                     }
@@ -236,7 +232,7 @@ fun CreateTeamScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             // Allow removal if it's NOT the current creator AND NOT the captain
-                            if (!isMe && !isCaptain) {
+                            if (member.id != currentUser.id && !isCaptain) {
                                 IconButton(onClick = { selectedMembers.remove(member) }) { Icon(Icons.Default.Delete, null, tint = Color.Gray) }
                             }
                         }

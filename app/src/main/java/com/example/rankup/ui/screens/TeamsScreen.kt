@@ -1,6 +1,7 @@
 package com.example.rankup.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +29,7 @@ import java.util.*
 @Composable
 fun TeamsScreen(
     teams: List<PlannedTeam>,
+    onTeamClick: (PlannedTeam) -> Unit,
     onCreateTeamClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -93,7 +95,7 @@ fun TeamsScreen(
             }
 
             items(teams) { team ->
-                TeamListItem(team)
+                TeamListItem(team = team, onClick = { onTeamClick(team) })
             }
 
             item {
@@ -117,9 +119,11 @@ fun TeamsScreen(
 }
 
 @Composable
-fun TeamListItem(team: PlannedTeam) {
+fun TeamListItem(team: PlannedTeam, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -161,7 +165,7 @@ fun TeamListItem(team: PlannedTeam) {
 @Composable
 fun TeamsScreenEmptyPreview() {
     RankUpTheme {
-        TeamsScreen(teams = emptyList(), onCreateTeamClick = {})
+        TeamsScreen(teams = emptyList(), onTeamClick = {}, onCreateTeamClick = {})
     }
 }
 
@@ -174,6 +178,7 @@ fun TeamsScreenListPreview() {
                 PlannedTeam(name = "Team HackYou", sport = "Football", members = listOf("1", "2")),
                 PlannedTeam(name = "Dream Team", sport = "Padel", members = listOf("1", "2", "3"))
             ),
+            onTeamClick = {},
             onCreateTeamClick = {}
         )
     }

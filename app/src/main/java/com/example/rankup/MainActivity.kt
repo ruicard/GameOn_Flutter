@@ -55,6 +55,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     val allUsers: List<UserProfile> by userViewModel.allUsers.collectAsStateWithLifecycle()
     val availableSports: List<SportModel> by userViewModel.availableSports.collectAsStateWithLifecycle()
     val isInitializing by userViewModel.isInitializing.collectAsStateWithLifecycle()
+    val isRefreshing by userViewModel.isRefreshing.collectAsStateWithLifecycle()
     
     val context = LocalContext.current
 
@@ -109,6 +110,10 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     } else if (matchToEdit != null) {
         EditMatchScreen(
             match = matchToEdit!!,
+            availableSports = availableSports,
+            userTeams = userTeams,
+            allTeams = allTeams,
+            allUsers = allUsers,
             onSave = { updatedMatch ->
                 userViewModel.updateMatch(context, updatedMatch)
                 matchToEdit = null
@@ -119,8 +124,16 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     } else if (selectedMatchForDetails != null) {
         MatchDetailsScreen(
             match = selectedMatchForDetails!!,
+            allUsers = allUsers,
             onBack = { selectedMatchForDetails = null },
             onEdit = { matchToEdit = selectedMatchForDetails },
+            onSaveResults = { scoreMyTeam, scoreOpponent ->
+                userViewModel.updateMatch(context, selectedMatchForDetails!!.copy(
+                    scoreMyTeam = scoreMyTeam,
+                    scoreOpponent = scoreOpponent
+                ))
+                selectedMatchForDetails = null
+            },
             onCancelMatch = {
                 userViewModel.cancelMatch(context, selectedMatchForDetails!!.id)
                 selectedMatchForDetails = null
@@ -182,9 +195,11 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                         AppDestinations.HOME -> HomeScreen(
                             userProfile = userProfile,
                             plannedMatches = plannedMatches,
+                            isRefreshing = isRefreshing,
                             onPlanMatchClick = { showPlanMatch = true },
                             onSignInClick = { userViewModel.signIn(context) },
-                            onMatchClick = { match -> selectedMatchForDetails = match }
+                            onMatchClick = { match -> selectedMatchForDetails = match },
+                            onRefresh = { userViewModel.refreshData() }
                         )
                         AppDestinations.ACCOUNT -> AccountScreen(
                             userProfile = userProfile,

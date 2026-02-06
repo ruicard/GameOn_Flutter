@@ -18,6 +18,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.toObject
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,7 +47,9 @@ data class PlannedMatch(
     val myTeam: String = "",
     val opponent: String = "",
     val createdByUserId: String = "",
-    val invitedPlayers: List<String> = emptyList()
+    val invitedPlayers: List<String> = emptyList(),
+    val scoreMyTeam: Int? = null,
+    val scoreOpponent: Int? = null
 )
 
 data class PlannedTeam(
@@ -98,6 +101,9 @@ class UserViewModel : ViewModel() {
     private val _isInitializing = MutableStateFlow(true)
     val isInitializing: StateFlow<Boolean> = _isInitializing.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     private var isSigningIn = false
 
     init {
@@ -124,6 +130,37 @@ class UserViewModel : ViewModel() {
         } else {
             _isInitializing.value = false
             fetchSports()
+        }
+    }
+
+    fun refreshData() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                // Fetch fresh data
+                val currentUser = auth.currentUser
+                if (currentUser != null) {
+                    val email = currentUser.email ?: ""
+                    if (email.isNotEmpty()) {
+                        val userDoc = usersCollection.document(email).get().await()
+                        if (userDoc.exists()) {
+                            _userProfile.value = userDoc.toObject<UserProfile>()
+                        }
+                    }
+                }
+                fetchAllUsers()
+                // Fetch sports (using list instead of listener for one-time manual refresh)
+                val sportsSnapshot = sportsCollection.get().await()
+                _availableSports.value = sportsSnapshot.documents.mapNotNull { it.toObject<SportModel>()?.copy(id = it.id) }.sortedBy { it.name }
+                
+                // Add a small artificial delay so the UI shows the refresh state
+                delay(500)
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Refresh failed: ${e.message}")
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 

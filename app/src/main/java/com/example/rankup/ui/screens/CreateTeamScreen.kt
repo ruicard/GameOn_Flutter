@@ -3,10 +3,12 @@ package com.example.rankup.ui.screens
 import android.Manifest
 import android.content.Context
 import android.location.Geocoder
+import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,8 +49,9 @@ fun CreateTeamScreen(
     currentUser: UserProfile,
     allUsers: List<UserProfile>,
     availableSports: List<SportModel>,
+    onPickIcon: ((String) -> Unit) -> Unit,
     onBack: () -> Unit,
-    onSave: (PlannedTeam) -> Unit,
+    onSave: (PlannedTeam, Uri?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var step by remember { mutableIntStateOf(1) }
@@ -59,6 +62,8 @@ fun CreateTeamScreen(
     var selectedAgeGroup by remember { mutableStateOf(AgeGroup.SENIOR_18_45) }
     var selectedGender by remember { mutableStateOf(Gender.UNKNOWN) }
     var city by remember { mutableStateOf("") }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedIconUrl by remember { mutableStateOf<String?>("https://cdn-icons-png.flaticon.com/512/166/166344.png") }
 
     // Step 2 State
     var selectedCaptain by remember { mutableStateOf(currentUser) }
@@ -120,7 +125,20 @@ fun CreateTeamScreen(
         if (step == 1) {
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
-                    AsyncImage(model = "https://cdn-icons-png.flaticon.com/512/166/166344.png", contentDescription = null, modifier = Modifier.size(100.dp).clip(CircleShape).background(Color.LightGray))
+                    AsyncImage(
+                        model = selectedIconUrl ?: selectedImageUri ?: "https://cdn-icons-png.flaticon.com/512/166/166344.png", 
+                        contentDescription = null, 
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color.LightGray)
+                            .clickable { 
+                                onPickIcon { url ->
+                                    selectedIconUrl = url
+                                    selectedImageUri = null // Clear local URI if an icon is picked
+                                }
+                            }
+                    )
                 }
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium)
                 Spacer(modifier = Modifier.height(16.dp))
@@ -158,11 +176,10 @@ fun CreateTeamScreen(
                 // Captain Selection
                 ExposedDropdownMenuBox(expanded = captainExpanded, onExpandedChange = { captainExpanded = !captainExpanded }) {
                     OutlinedTextField(
-                        value = captainSearchText,
-                        onValueChange = { captainSearchText = it; captainExpanded = true },
-                        label = { Text("Capitain") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(captainExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        value = captainSearchText, 
+                        onValueChange = { captainSearchText = it; captainExpanded = true }, 
+                        label = { Text("Capitain") }, 
+                        modifier = Modifier.menuAnchor().fillMaxWidth(), 
                         shape = MaterialTheme.shapes.medium
                     )
                     if (filteredCaptains.isNotEmpty()) {
@@ -174,10 +191,9 @@ fun CreateTeamScreen(
                                         selectedCaptain = user
                                         captainSearchText = user.name ?: user.email
                                         captainExpanded = false
-                                        
-                                        // Update list: move new captain to first position, remove old reference if any
-                                        selectedMembers.removeAll { it.id == user.id }
-                                        selectedMembers.add(0, user)
+                                        if (selectedMembers.none { it.id == user.id }) {
+                                            selectedMembers.add(user)
+                                        }
                                     }
                                 )
                             }
@@ -190,12 +206,12 @@ fun CreateTeamScreen(
                 val searchEnabled = selectedMembers.size < maxPlayers
                 ExposedDropdownMenuBox(expanded = playerSearchExpanded && filteredPlayers.isNotEmpty() && searchEnabled, onExpandedChange = { if (searchEnabled) playerSearchExpanded = !playerSearchExpanded }) {
                     OutlinedTextField(
-                        value = playerSearchText,
-                        onValueChange = { playerSearchText = it; playerSearchExpanded = true },
-                        label = { Text(if (searchEnabled) "Invite players" else "Max members reached") },
-                        trailingIcon = { Icon(Icons.Default.Search, null) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
+                        value = playerSearchText, 
+                        onValueChange = { playerSearchText = it; playerSearchExpanded = true }, 
+                        label = { Text(if (searchEnabled) "Invite players" else "Max members reached") }, 
+                        trailingIcon = { Icon(Icons.Default.Search, null) }, 
+                        modifier = Modifier.menuAnchor().fillMaxWidth(), 
+                        shape = MaterialTheme.shapes.medium, 
                         enabled = searchEnabled
                     )
                     ExposedDropdownMenu(expanded = playerSearchExpanded && filteredPlayers.isNotEmpty(), onDismissRequest = { playerSearchExpanded = false }) {
@@ -229,9 +245,9 @@ fun CreateTeamScreen(
                                 },
                                 style = MaterialTheme.typography.bodyLarge, 
                                 maxLines = 1, 
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
-                            // Allow removal if it's NOT the current creator AND NOT the captain
                             if (member.id != currentUser.id && !isCaptain) {
                                 IconButton(onClick = { selectedMembers.remove(member) }) { Icon(Icons.Default.Delete, null, tint = Color.Gray) }
                             }
@@ -243,7 +259,12 @@ fun CreateTeamScreen(
         }
 
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            OutlinedButton(onClick = { if (step == 2) step = 1 else onBack() }, modifier = Modifier.weight(1f).height(56.dp), shape = RoundedCornerShape(28.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black)) {
+            OutlinedButton(
+                onClick = { if (step == 2) step = 1 else onBack() }, 
+                modifier = Modifier.weight(1f).height(56.dp), 
+                shape = RoundedCornerShape(28.dp), 
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black)
+            ) {
                 Text(if (step == 1) "Cancel" else "Back", color = Color.Black)
             }
             
@@ -262,7 +283,7 @@ fun CreateTeamScreen(
                     Text("Next")
                 }
             } else {
-                val canCreate = selectedMembers.size > minPlayersNeededForCreation && selectedCaptain.id.isNotEmpty()
+                val canCreate = selectedMembers.size >= minPlayersNeededForCreation && selectedCaptain.id.isNotEmpty()
                 Button(
                     onClick = { 
                         onSave(PlannedTeam(
@@ -273,8 +294,9 @@ fun CreateTeamScreen(
                             gender = selectedGender.name, 
                             ageGroup = selectedAgeGroup.name, 
                             city = city, 
-                            captainId = selectedCaptain.id
-                        )) 
+                            captainId = selectedCaptain.id,
+                            profilePictureUrl = selectedIconUrl
+                        ), selectedImageUri) 
                     }, 
                     enabled = canCreate, 
                     modifier = Modifier.weight(1f).height(56.dp), 

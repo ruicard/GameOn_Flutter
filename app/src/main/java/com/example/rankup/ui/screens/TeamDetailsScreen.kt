@@ -2,10 +2,12 @@ package com.example.rankup.ui.screens
 
 import android.Manifest
 import android.location.Geocoder
+import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,7 +33,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.decode.SvgDecoder
 import com.example.rankup.PlannedTeam
 import com.example.rankup.UserProfile
 import com.example.rankup.SportModel
@@ -45,8 +49,9 @@ fun TeamDetailsScreen(
     currentUser: UserProfile,
     allUsers: List<UserProfile>,
     availableSports: List<SportModel>,
+    onPickIcon: ((String) -> Unit) -> Unit,
     onBack: () -> Unit,
-    onSave: (PlannedTeam) -> Unit,
+    onSave: (PlannedTeam, Uri?) -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -55,6 +60,8 @@ fun TeamDetailsScreen(
 
     var name by remember { mutableStateOf(team.name) }
     var city by remember { mutableStateOf(team.city) }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedIconUrl by remember { mutableStateOf(team.profilePictureUrl) }
     
     val selectedMembers = remember { mutableStateListOf<UserProfile>() }
     var playerSearchText by remember { mutableStateOf("") }
@@ -65,6 +72,12 @@ fun TeamDetailsScreen(
     var captainExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val imageLoader = remember {
+        ImageLoader.Builder(context)
+            .components { add(SvgDecoder.Factory()) }
+            .build()
+    }
+
     val selectedSportModel = availableSports.find { it.name == team.sport }
     val maxPlayers = selectedSportModel?.maxPlayersTeam ?: 10
 
@@ -78,16 +91,12 @@ fun TeamDetailsScreen(
                         val geocoder = Geocoder(context, Locale.getDefault())
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                             geocoder.getFromLocation(it.latitude, it.longitude, 1) { addresses ->
-                                if (addresses.isNotEmpty()) {
-                                    city = addresses[0].locality ?: ""
-                                }
+                                if (addresses.isNotEmpty()) { city = addresses[0].locality ?: "" }
                             }
                         } else {
                             @Suppress("DEPRECATION")
                             val addresses = geocoder.getFromLocation(it.latitude, it.longitude, 1)
-                            if (!addresses.isNullOrEmpty()) {
-                                city = addresses[0].locality ?: ""
-                            }
+                            if (!addresses.isNullOrEmpty()) { city = addresses[0].locality ?: "" }
                         }
                     }
                 }
@@ -130,12 +139,27 @@ fun TeamDetailsScreen(
             )
         }
 
-        // Team Picture moved outside tabs to be above them
-        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+        // Team Picture clickable to pick icon
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp), 
+            contentAlignment = Alignment.Center
+        ) {
             AsyncImage(
-                model = "https://cdn-icons-png.flaticon.com/512/166/166344.png",
-                contentDescription = null,
-                modifier = Modifier.size(100.dp).clip(CircleShape).background(Color.LightGray)
+                model = selectedIconUrl ?: team.profilePictureUrl ?: "https://cdn-icons-png.flaticon.com/512/166/166344.png",
+                imageLoader = imageLoader,
+                contentDescription = "Team Picture",
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(CircleShape)
+                    .background(Color.LightGray)
+                    .clickable { 
+                        onPickIcon { url ->
+                            selectedIconUrl = url
+                            selectedImageUri = null
+                        }
+                    }
             )
         }
 
@@ -235,7 +259,6 @@ fun TeamDetailsScreen(
                                             selectedCaptain = user
                                             captainSearchText = user.name ?: user.email
                                             captainExpanded = false
-                                            // Ensure new captain is in members and moves to top
                                             if (selectedMembers.none { it.id == user.id }) {
                                                 selectedMembers.add(user)
                                             }
@@ -281,9 +304,7 @@ fun TeamDetailsScreen(
                     Text("Members", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
                     
                     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Display captain first
                         val sortedDisplayList = selectedMembers.sortedByDescending { it.id == selectedCaptain?.id }
-                        
                         items(sortedDisplayList) { member ->
                             val isCaptain = member.id == selectedCaptain?.id
                             val isMe = member.id == currentUser.id
@@ -299,7 +320,6 @@ fun TeamDetailsScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
-                                // Allow removal if it's NOT the captain AND NOT the creator
                                 if (!isCaptain && member.id != team.creatorId) {
                                     IconButton(onClick = { selectedMembers.removeAll { it.id == member.id } }) {
                                         Icon(Icons.Default.Delete, null, tint = Color.Gray)
@@ -320,8 +340,9 @@ fun TeamDetailsScreen(
                         name = name,
                         city = city,
                         members = selectedMembers.map { it.id },
-                        captainId = selectedCaptain?.id ?: team.captainId
-                    ))
+                        captainId = selectedCaptain?.id ?: team.captainId,
+                        profilePictureUrl = selectedIconUrl
+                    ), selectedImageUri)
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(28.dp),

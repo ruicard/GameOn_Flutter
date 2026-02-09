@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.rankup.PlannedMatch
+import com.example.rankup.PlannedTeam
 import com.example.rankup.UserProfile
 import com.example.rankup.ui.theme.RankUpTheme
 import java.text.SimpleDateFormat
@@ -39,6 +40,7 @@ import java.util.*
 fun HomeScreen(
     userProfile: UserProfile?,
     plannedMatches: List<PlannedMatch>,
+    allTeams: List<PlannedTeam>,
     isRefreshing: Boolean,
     onPlanMatchClick: () -> Unit,
     onSignInClick: () -> Unit,
@@ -112,7 +114,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                                 items(sortedUpcoming) { match -> 
-                                    NextMatchCard(match, onClick = { onMatchClick(match) }) 
+                                    NextMatchCard(match, allTeams, onClick = { onMatchClick(match) }) 
                                 }
                             }
                         }
@@ -126,7 +128,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                                 items(sortedPast) { match -> 
-                                    PreviousMatchCard(match, onClick = { onMatchClick(match) }) 
+                                    PreviousMatchCard(match, allTeams, onClick = { onMatchClick(match) }) 
                                 }
                             }
                         }
@@ -205,13 +207,17 @@ fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
 }
 
 @Composable
-fun NextMatchCard(match: PlannedMatch, onClick: () -> Unit) {
+fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () -> Unit) {
     var formattedDate = match.dateTime
     try {
         val sdfInput = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
         val date = sdfInput.parse(match.dateTime)
         if (date != null) formattedDate = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(date)
     } catch (e: Exception) {}
+
+    val myTeamObj = allTeams.find { it.name == match.myTeam }
+    val opponentObj = allTeams.find { it.name == match.opponent }
+
     Card(
         modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
         shape = RoundedCornerShape(24.dp), 
@@ -225,15 +231,15 @@ fun NextMatchCard(match: PlannedMatch, onClick: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(20.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TeamAvatar(match.myTeam, Color(0xFFFFE082), modifier = Modifier.weight(1f))
-                TeamAvatar(match.opponent, Color(0xFFA5D6A7), modifier = Modifier.weight(1f))
+                TeamAvatar(match.myTeam, Color(0xFFFFE082), modifier = Modifier.weight(1f), imageUrl = myTeamObj?.profilePictureUrl)
+                TeamAvatar(match.opponent, Color(0xFFA5D6A7), modifier = Modifier.weight(1f), imageUrl = opponentObj?.profilePictureUrl)
             }
         }
     }
 }
 
 @Composable
-fun PreviousMatchCard(match: PlannedMatch, onClick: () -> Unit) {
+fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () -> Unit) {
     var formattedDate = match.dateTime
     try {
         val sdfInput = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -242,6 +248,8 @@ fun PreviousMatchCard(match: PlannedMatch, onClick: () -> Unit) {
     } catch (e: Exception) {}
     
     val missingResults = match.scoreMyTeam == null || match.scoreOpponent == null
+    val myTeamObj = allTeams.find { it.name == match.myTeam }
+    val opponentObj = allTeams.find { it.name == match.opponent }
 
     Column(modifier = Modifier.width(220.dp)) {
         Card(
@@ -258,9 +266,9 @@ fun PreviousMatchCard(match: PlannedMatch, onClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    TeamAvatar(match.myTeam, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreMyTeam)
+                    TeamAvatar(match.myTeam, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreMyTeam, imageUrl = myTeamObj?.profilePictureUrl)
                     Text("vs", modifier = Modifier.padding(horizontal = 4.dp), color = Color.Gray, fontSize = 12.sp)
-                    TeamAvatar(match.opponent, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreOpponent)
+                    TeamAvatar(match.opponent, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreOpponent, imageUrl = opponentObj?.profilePictureUrl)
                 }
             }
         }
@@ -285,12 +293,23 @@ fun PreviousMatchCard(match: PlannedMatch, onClick: () -> Unit) {
 }
 
 @Composable
-fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier, showMore: Boolean = true, score: Int? = null) {
+fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier, showMore: Boolean = true, score: Int? = null, imageUrl: String? = null) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center) {
             Box(modifier = Modifier.size(70.dp).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
                 if (score != null) {
-                    Text(text = score.toString(), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = Color.Black)
+                    // Overlay score or show it if no image
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (imageUrl != null) 0.4f else 0f)), contentAlignment = Alignment.Center) {
+                        Text(text = score.toString(), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = if (imageUrl != null) Color.White else Color.Black)
+                    }
                 }
             }
             if (showMore) {
@@ -314,17 +333,5 @@ fun InviteFriendsCard(onClick: () -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Text("Invite your friends for a match", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun HomeScreenPreview() {
-    RankUpTheme {
-        HomeScreen(
-            userProfile = UserProfile(id = UUID.randomUUID().toString(), name = "Rui Cardoso", email = "rui@example.com", profilePictureUrl = null),
-            plannedMatches = listOf(PlannedMatch(modality = "Football", dateTime = "12/09/2025 18:00", location = "Campo Futebol Bosch", myTeam = "Team HackYou", opponent = "Team Badass")),
-            isRefreshing = false, onPlanMatchClick = {}, onSignInClick = {}, onMatchClick = {}, onRefresh = {}
-        )
     }
 }

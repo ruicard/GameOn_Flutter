@@ -1,13 +1,12 @@
 package com.example.rankup
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialException
-import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rankup.data.*
@@ -18,6 +17,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.toObject
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,7 +61,8 @@ data class PlannedTeam(
     val gender: String = Gender.UNKNOWN.name,
     val ageGroup: String = AgeGroup.SENIOR_18_45.name,
     val city: String = "",
-    val captainId: String = ""
+    val captainId: String = "",
+    val profilePictureUrl: String? = null
 )
 
 data class SportModel(
@@ -75,6 +76,7 @@ data class SportModel(
 class UserViewModel : ViewModel() {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val storage = FirebaseStorage.getInstance()
     private val usersCollection = db.collection("users")
     private val matchesCollection = db.collection("matches")
     private val teamsCollection = db.collection("teams")
@@ -138,7 +140,6 @@ class UserViewModel : ViewModel() {
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                // Fetch fresh data
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
                     val email = currentUser.email ?: ""
@@ -150,12 +151,9 @@ class UserViewModel : ViewModel() {
                     }
                 }
                 fetchAllUsers()
-                // Fetch sports (using list instead of listener for one-time manual refresh)
                 val sportsSnapshot = sportsCollection.get().await()
                 _availableSports.value = sportsSnapshot.documents.mapNotNull { it.toObject<SportModel>()?.copy(id = it.id) }.sortedBy { it.name }
-                
-                // Add a small artificial delay so the UI shows the refresh state
-                delay(500)
+                delay(1000)
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Refresh failed: ${e.message}")
             } finally {
@@ -332,10 +330,21 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    fun createTeam(context: Context, team: PlannedTeam) {
+    private suspend fun uploadTeamPicture(teamId: String, imageUri: Uri): String {
+        val ref = storage.reference.child("teams/$teamId.jpg")
+        ref.putFile(imageUri).await()
+        return ref.downloadUrl.await().toString()
+    }
+
+    fun createTeam(context: Context, team: PlannedTeam, imageUri: Uri? = null) {
         viewModelScope.launch {
             try {
-                teamsCollection.document(team.id).set(team).await()
+                var finalTeam = team
+                if (imageUri != null) {
+                    val url = uploadTeamPicture(team.id, imageUri)
+                    finalTeam = team.copy(profilePictureUrl = url)
+                }
+                teamsCollection.document(finalTeam.id).set(finalTeam).await()
                 Toast.makeText(context, "Team created!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Create Team Error: ${e.message}")
@@ -343,10 +352,15 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    fun updateTeam(context: Context, team: PlannedTeam) {
+    fun updateTeam(context: Context, team: PlannedTeam, imageUri: Uri? = null) {
         viewModelScope.launch {
             try {
-                teamsCollection.document(team.id).set(team).await()
+                var finalTeam = team
+                if (imageUri != null) {
+                    val url = uploadTeamPicture(team.id, imageUri)
+                    finalTeam = team.copy(profilePictureUrl = url)
+                }
+                teamsCollection.document(finalTeam.id).set(finalTeam).await()
                 Toast.makeText(context, "Team updated!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Update Team Error: ${e.message}")

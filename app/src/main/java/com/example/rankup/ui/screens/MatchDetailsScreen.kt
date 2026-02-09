@@ -167,32 +167,30 @@ fun MatchDetailsScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         if (match.matchType == "Team") {
-            if (!isPast) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Button(
+                    onClick = { /* View team details */ },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF212121))
                 ) {
-                    Button(
-                        onClick = { /* View team details */ },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF212121))
-                    ) {
-                        Text(text = match.myTeam, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    Text(text = match.myTeam, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
 
-                    Button(
-                        onClick = { /* View opponent details */ },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0))
-                    ) {
-                        Text(text = match.opponent, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                Button(
+                    onClick = { /* View opponent details */ },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0))
+                ) {
+                    Text(text = match.opponent, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         } else {
@@ -236,7 +234,7 @@ fun MatchDetailsScreen(
         }
 
         if (isPast) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
                 Text(
                     text = "Match Results",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)

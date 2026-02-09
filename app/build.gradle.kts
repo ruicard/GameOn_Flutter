@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
     implementation(libs.coil.compose)
+    implementation("io.coil-kt:coil-svg:2.6.0")
 
     // Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
@@ -72,6 +73,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.storage)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

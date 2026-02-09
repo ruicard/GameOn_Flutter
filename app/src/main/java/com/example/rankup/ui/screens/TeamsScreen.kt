@@ -141,7 +141,16 @@ fun TeamListItem(team: PlannedTeam, onClick: () -> Unit) {
                     .background(Color(0xFFE0E0E0)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Groups, contentDescription = null, tint = Color.Gray)
+                if (team.profilePictureUrl != null) {
+                    AsyncImage(
+                        model = team.profilePictureUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Default.Groups, contentDescription = null, tint = Color.Gray)
+                }
             }
             
             Spacer(modifier = Modifier.width(16.dp))
@@ -175,7 +184,7 @@ fun TeamsScreenListPreview() {
     RankUpTheme {
         TeamsScreen(
             teams = listOf(
-                PlannedTeam(name = "Team HackYou", sport = "Football", members = listOf("1", "2")),
+                PlannedTeam(name = "Team HackYou", sport = "Football", members = listOf("1", "2"), profilePictureUrl = "https://cdn-icons-png.flaticon.com/512/166/166344.png"),
                 PlannedTeam(name = "Dream Team", sport = "Padel", members = listOf("1", "2", "3"))
             ),
             onTeamClick = {},

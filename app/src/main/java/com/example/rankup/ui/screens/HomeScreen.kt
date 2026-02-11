@@ -10,9 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -20,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +27,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.rankup.InvitationStatus
 import com.example.rankup.PlannedMatch
 import com.example.rankup.PlannedTeam
 import com.example.rankup.UserProfile
@@ -215,26 +215,86 @@ fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () 
         if (date != null) formattedDate = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(date)
     } catch (e: Exception) {}
 
-    val myTeamObj = allTeams.find { it.name == match.myTeam }
-    val opponentObj = allTeams.find { it.name == match.opponent }
+    if (match.matchType == "Team") {
+        val myTeamObj = allTeams.find { it.name == match.myTeam }
+        val opponentObj = allTeams.find { it.name == match.opponent }
 
-    Card(
-        modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
-        shape = RoundedCornerShape(24.dp), 
-        colors = CardDefaults.cardColors(containerColor = Color.White), 
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(formattedDate, fontSize = 12.sp, color = Color.Gray)
-            }
-            Spacer(modifier = Modifier.height(20.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TeamAvatar(match.myTeam, Color(0xFFFFE082), modifier = Modifier.weight(1f), imageUrl = myTeamObj?.profilePictureUrl)
-                TeamAvatar(match.opponent, Color(0xFFA5D6A7), modifier = Modifier.weight(1f), imageUrl = opponentObj?.profilePictureUrl)
+        Card(
+            modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
+            shape = RoundedCornerShape(24.dp), 
+            colors = CardDefaults.cardColors(containerColor = Color.White), 
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(formattedDate, fontSize = 12.sp, color = Color.Gray)
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TeamAvatar(match.myTeam, Color(0xFFFFE082), modifier = Modifier.weight(1f), imageUrl = myTeamObj?.profilePictureUrl)
+                    TeamAvatar(match.opponent, Color(0xFFA5D6A7), modifier = Modifier.weight(1f), imageUrl = opponentObj?.profilePictureUrl)
+                }
             }
         }
+    } else {
+        // Player Type Match Card - Matches Team box size
+        Card(
+            modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
+            shape = RoundedCornerShape(24.dp), 
+            colors = CardDefaults.cardColors(containerColor = Color.White), 
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(formattedDate, fontSize = 12.sp, color = Color.Gray)
+                }
+                
+                Spacer(modifier = Modifier.height(2.dp))
+                
+                val invitations = match.playerInvitations
+                val accepted = invitations.values.count { it == InvitationStatus.ACCEPTED.name }
+                val declined = invitations.values.count { it == InvitationStatus.DECLINED.name }
+                val noAnswer = invitations.values.count { it == InvitationStatus.NO_ANSWER.name }
+                val tentative = invitations.values.count { it == InvitationStatus.TENTATIVE.name }
+
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        StatusIndicator(count = accepted, label = "accepted", color = Color(0xFF00897B), icon = Icons.Default.Check)
+                        StatusIndicator(count = declined, label = "declined", color = Color(0xFFF44336), icon = Icons.Default.Close)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        StatusIndicator(count = noAnswer, label = "no answer", color = Color.Gray, icon = Icons.Default.MoreHoriz)
+                        StatusIndicator(count = tentative, label = "tentative", color = Color(0xFFFFA000), icon = Icons.Default.HelpOutline)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusIndicator(count: Int, label: String, color: Color, icon: ImageVector) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.BottomEnd) {
+            Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFE0E0E0)))
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(color)
+                    .padding(1.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(text = "$count $label", fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -306,7 +366,6 @@ fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier, showMo
                     )
                 }
                 if (score != null) {
-                    // Overlay score or show it if no image
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (imageUrl != null) 0.4f else 0f)), contentAlignment = Alignment.Center) {
                         Text(text = score.toString(), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = if (imageUrl != null) Color.White else Color.Black)
                     }

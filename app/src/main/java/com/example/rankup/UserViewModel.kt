@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rankup.data.*
@@ -26,6 +28,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
+
+enum class MatchStatus {
+    SCHEDULED, CONFIRMED, INPROGRESS, COMPLETED, CANCELLED
+}
+
+enum class InvitationStatus {
+    NO_ANSWER, ACCEPTED, TENTATIVE, DECLINED
+}
 
 data class UserProfile(
     val id: String = "",
@@ -49,7 +59,11 @@ data class PlannedMatch(
     val createdByUserId: String = "",
     val invitedPlayers: List<String> = emptyList(),
     val scoreMyTeam: Int? = null,
-    val scoreOpponent: Int? = null
+    val scoreOpponent: Int? = null,
+    val status: String = MatchStatus.SCHEDULED.name,
+    val teamAPlayers: List<String> = emptyList(),
+    val teamBPlayers: List<String> = emptyList(),
+    val playerInvitations: Map<String, String> = emptyMap()
 )
 
 data class PlannedTeam(
@@ -299,7 +313,11 @@ class UserViewModel : ViewModel() {
         val user = _userProfile.value ?: return
         viewModelScope.launch {
             try {
-                val matchWithUser = match.copy(createdByUserId = user.id)
+                val initialInvitations = match.invitedPlayers.associateWith { InvitationStatus.NO_ANSWER.name }
+                val matchWithUser = match.copy(
+                    createdByUserId = user.id,
+                    playerInvitations = initialInvitations
+                )
                 matchesCollection.document(matchWithUser.id).set(matchWithUser).await()
                 Toast.makeText(context, "Match saved!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {

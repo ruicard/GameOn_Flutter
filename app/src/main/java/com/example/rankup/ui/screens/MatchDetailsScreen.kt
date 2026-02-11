@@ -1,6 +1,7 @@
 package com.example.rankup.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -39,6 +40,7 @@ fun MatchDetailsScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onSaveResults: (Int?, Int?) -> Unit,
+    onRandomizeTeams: (List<String>, List<String>) -> Unit,
     onCancelMatch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -194,14 +196,35 @@ fun MatchDetailsScreen(
                 }
             }
         } else {
-            // Player type: show list of players
-            Text(
-                text = "Invited Players",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            
+            // Player type
             val invitedPlayers = allUsers.filter { match.invitedPlayers.contains(it.id) }
+            val teamAPlayers = allUsers.filter { match.teamAPlayers.contains(it.id) }
+            val teamBPlayers = allUsers.filter { match.teamBPlayers.contains(it.id) }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (teamAPlayers.isEmpty() && teamBPlayers.isEmpty()) "Invited Players" else "Teams Structure",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                // Random Teams button only shown for upcoming matches (!isPast)
+                if (!isPast && match.invitedPlayers.size >= 2) {
+                    Button(
+                        onClick = {
+                            val shuffled = match.invitedPlayers.shuffled()
+                            val mid = shuffled.size / 2
+                            val teamA = shuffled.subList(0, mid)
+                            val teamB = shuffled.subList(mid, shuffled.size)
+                            onRandomizeTeams(teamA, teamB)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Random Teams", fontSize = 12.sp)
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
             
             LazyColumn(
                 modifier = Modifier
@@ -209,26 +232,16 @@ fun MatchDetailsScreen(
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(invitedPlayers) { player ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Color.Gray,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = player.name ?: player.email,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
+                if (teamAPlayers.isEmpty() && teamBPlayers.isEmpty()) {
+                    items(invitedPlayers) { player ->
+                        PlayerItem(player)
                     }
-                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                } else {
+                    item { Text("Team A", style = MaterialTheme.typography.labelLarge, color = Color.Gray) }
+                    items(teamAPlayers) { player -> PlayerItem(player) }
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                    item { Text("Team B", style = MaterialTheme.typography.labelLarge, color = Color.Gray) }
+                    items(teamBPlayers) { player -> PlayerItem(player) }
                 }
             }
         }
@@ -262,7 +275,7 @@ fun MatchDetailsScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (match.matchType == "Team") match.myTeam else "Side A",
+                            text = if (match.matchType == "Team") match.myTeam else "Team A",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
@@ -285,7 +298,7 @@ fun MatchDetailsScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (match.matchType == "Team") match.opponent else "Side B",
+                            text = if (match.matchType == "Team") match.opponent else "Team B",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
@@ -324,6 +337,29 @@ fun MatchDetailsScreen(
     }
 }
 
+@Composable
+private fun PlayerItem(player: UserProfile) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Person,
+            contentDescription = null,
+            tint = Color.Gray,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = player.name ?: player.email,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+}
+
 @Preview(showBackground = true)
 @Composable
 fun MatchDetailsScreenPreview() {
@@ -341,6 +377,7 @@ fun MatchDetailsScreenPreview() {
             onBack = {},
             onEdit = {},
             onSaveResults = { _, _ -> },
+            onRandomizeTeams = { _, _ -> },
             onCancelMatch = {}
         )
     }

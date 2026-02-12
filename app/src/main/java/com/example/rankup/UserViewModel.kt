@@ -266,8 +266,25 @@ class UserViewModel : ViewModel() {
     private fun listenToMatches() {
         matchesCollection.addSnapshotListener { snapshot, e ->
             if (snapshot != null) {
-                val matches = snapshot.documents.mapNotNull { it.toObject<PlannedMatch>() }
+                val now = Calendar.getInstance().time
                 val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                val matches = snapshot.documents.mapNotNull { it.toObject<PlannedMatch>() }
+                
+                // Identify matches that should be marked as COMPLETED
+                matches.forEach { match ->
+                    try {
+                        val matchDate = sdf.parse(match.dateTime)
+                        if (matchDate != null && matchDate.before(now) && 
+                            match.status != MatchStatus.COMPLETED.name && 
+                            match.status != MatchStatus.CANCELLED.name) {
+                            // Update status in Firestore
+                            matchesCollection.document(match.id).update("status", MatchStatus.COMPLETED.name)
+                        }
+                    } catch (ex: Exception) {
+                        Log.e("UserViewModel", "Error parsing date for match status update: ${ex.message}")
+                    }
+                }
+
                 _plannedMatches.value = matches.sortedBy { 
                     try { sdf.parse(it.dateTime)?.time ?: Long.MAX_VALUE } catch (ex: Exception) { Long.MAX_VALUE }
                 }
@@ -313,10 +330,23 @@ class UserViewModel : ViewModel() {
         val user = _userProfile.value ?: return
         viewModelScope.launch {
             try {
-                val initialInvitations = match.invitedPlayers.associateWith { InvitationStatus.NO_ANSWER.name }
+                val finalInvitedPlayers = match.invitedPlayers.toMutableSet()
+                
+                if (match.matchType == "Team") {
+                    val myTeamObj = _allTeams.value.find { it.name == match.myTeam }
+                    val opponentObj = _allTeams.value.find { it.name == match.opponent }
+                    
+                    myTeamObj?.members?.let { finalInvitedPlayers.addAll(it) }
+                    opponentObj?.members?.let { finalInvitedPlayers.addAll(it) }
+                }
+                
+                val initialInvitations = finalInvitedPlayers.associateWith { InvitationStatus.NO_ANSWER.name }
+                
                 val matchWithUser = match.copy(
                     createdByUserId = user.id,
-                    playerInvitations = initialInvitations
+                    invitedPlayers = finalInvitedPlayers.toList(),
+                    playerInvitations = initialInvitations,
+                    status = MatchStatus.SCHEDULED.name
                 )
                 matchesCollection.document(matchWithUser.id).set(matchWithUser).await()
                 Toast.makeText(context, "Match saved!", Toast.LENGTH_SHORT).show()
@@ -340,8 +370,9 @@ class UserViewModel : ViewModel() {
     fun cancelMatch(context: Context, matchId: String) {
         viewModelScope.launch {
             try {
+                // Delete the match document from Firestore
                 matchesCollection.document(matchId).delete().await()
-                Toast.makeText(context, "Match cancelled", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Match cancelled and deleted", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Cancel Match Error: ${e.message}")
             }

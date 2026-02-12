@@ -46,6 +46,7 @@ fun HomeScreen(
     onSignInClick: () -> Unit,
     onMatchClick: (PlannedMatch) -> Unit,
     onRefresh: () -> Unit,
+    onUpdateStatus: (PlannedMatch, InvitationStatus) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val now = Calendar.getInstance().time
@@ -66,6 +67,10 @@ fun HomeScreen(
     
     val sortedPast = pastMatches.sortedByDescending { 
         try { sdf.parse(it.dateTime)?.time ?: 0L } catch (e: Exception) { 0L }
+    }
+
+    val pendingInvitations = sortedUpcoming.filter { match ->
+        userProfile != null && match.playerInvitations[userProfile.id] == InvitationStatus.NO_ANSWER.name
     }
 
     PullToRefreshBox(
@@ -97,24 +102,63 @@ fun HomeScreen(
                     }
                 }
             }
-        } else if (plannedMatches.isNotEmpty()) {
+        } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (sortedUpcoming.isNotEmpty()) {
-                    item { 
-                        Spacer(modifier = Modifier.height(8.dp))
-                        UpcomingMatchCard(sortedUpcoming.first(), onClick = { onMatchClick(sortedUpcoming.first()) }) 
-                    }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                if (sortedUpcoming.isEmpty() && pendingInvitations.isEmpty()) {
                     item {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("Next matches", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Column(
+                            modifier = Modifier.fillParentMaxHeight(0.7f).fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            AsyncImage(
+                                model = "https://images.unsplash.com/photo-1574629810360-7efbbe195018?q=80&w=1000&auto=format&fit=crop",
+                                contentDescription = "Stadium",
+                                modifier = Modifier.fillMaxWidth().height(250.dp).clip(RoundedCornerShape(32.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.height(40.dp))
+                            Text("Plan your first match", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp), textAlign = TextAlign.Center)
                             Spacer(modifier = Modifier.height(12.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                                items(sortedUpcoming) { match -> 
-                                    NextMatchCard(match, allTeams, onClick = { onMatchClick(match) }) 
+                            Text("Catchy sentence here, bla bla bla bla\nbla bla bla bla bla bla bla bla bla bla", style = MaterialTheme.typography.bodyLarge, color = Color.DarkGray, textAlign = TextAlign.Center, lineHeight = 24.sp)
+                            Spacer(modifier = Modifier.height(48.dp))
+                            Button(onClick = onPlanMatchClick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))) {
+                                Text("Plan Match", color = Color.White, fontSize = 16.sp)
+                            }
+                        }
+                    }
+                } else {
+                    if (sortedUpcoming.isNotEmpty()) {
+                        item {
+                            UpcomingMatchCard(sortedUpcoming.first(), onClick = { onMatchClick(sortedUpcoming.first()) })
+                        }
+                    }
+
+                    if (pendingInvitations.isNotEmpty()) {
+                        items(pendingInvitations) { match ->
+                            InvitationPendingCard(
+                                match = match,
+                                onClick = { onMatchClick(match) },
+                                onUpdateStatus = { status -> onUpdateStatus(match, status) }
+                            )
+                        }
+                    }
+
+                    if (sortedUpcoming.isNotEmpty()) {
+                        item {
+                            Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                Text("Next matches", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+                                    items(sortedUpcoming) { match ->
+                                        NextMatchCard(match, allTeams, onClick = { onMatchClick(match) })
+                                    }
                                 }
                             }
                         }
@@ -140,27 +184,6 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     InviteFriendsCard(onPlanMatchClick)
                     Spacer(modifier = Modifier.height(24.dp))
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                AsyncImage(
-                    model = "https://images.unsplash.com/photo-1574629810360-7efbbe195018?q=80&w=1000&auto=format&fit=crop",
-                    contentDescription = "Stadium",
-                    modifier = Modifier.fillMaxWidth().height(250.dp).clip(RoundedCornerShape(32.dp)),
-                    contentScale = ContentScale.Crop
-                )
-                Spacer(modifier = Modifier.height(40.dp))
-                Text("Plan your first match", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp), textAlign = TextAlign.Center)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Catchy sentence here, bla bla bla bla\nbla bla bla bla bla bla bla bla bla bla", style = MaterialTheme.typography.bodyLarge, color = Color.DarkGray, textAlign = TextAlign.Center, lineHeight = 24.sp)
-                Spacer(modifier = Modifier.height(48.dp))
-                Button(onClick = onPlanMatchClick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))) {
-                    Text("Plan Match", color = Color.White, fontSize = 16.sp)
                 }
             }
         }
@@ -201,6 +224,116 @@ fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 Text(match.location, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+fun InvitationPendingCard(
+    match: PlannedMatch,
+    onClick: () -> Unit,
+    onUpdateStatus: (InvitationStatus) -> Unit
+) {
+    val calendar = Calendar.getInstance()
+    var dayOfWeek = "---"
+    var dayOfMonth = "--"
+    var monthAbbr = "---"
+    var timeStr = "--:--"
+    try {
+        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+        val date = sdf.parse(match.dateTime)
+        if (date != null) {
+            calendar.time = date
+            dayOfWeek = SimpleDateFormat("EEE", Locale.getDefault()).format(date).uppercase()
+            dayOfMonth = SimpleDateFormat("dd", Locale.getDefault()).format(date)
+            monthAbbr = SimpleDateFormat("MMM", Locale.getDefault()).format(date).uppercase()
+            timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(date)
+        }
+    } catch (e: Exception) {}
+
+    var isEditing by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, Color(0xFFE91E63))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE0E0E0)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(dayOfWeek, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Text(dayOfMonth, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Invitation pending",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                Text(
+                    text = "${match.modality} - $dayOfMonth $monthAbbr - $timeStr",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Black
+                )
+                Text(match.location, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+            
+            if (isEditing) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.HelpOutline,
+                        contentDescription = "Tentative",
+                        tint = Color(0xFFFFA000),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clickable { onUpdateStatus(InvitationStatus.TENTATIVE) }
+                    )
+                    Icon(
+                        imageVector = Icons.Default.HighlightOff,
+                        contentDescription = "Declined",
+                        tint = Color(0xFFF44336),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clickable { onUpdateStatus(InvitationStatus.DECLINED) }
+                    )
+                    Icon(
+                        imageVector = Icons.Default.CheckCircleOutline,
+                        contentDescription = "Accepted",
+                        tint = Color(0xFF00897B),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clickable { onUpdateStatus(InvitationStatus.ACCEPTED) }
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFBDBDBD))
+                        .clickable { isEditing = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreHoriz,
+                        contentDescription = "Pending",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

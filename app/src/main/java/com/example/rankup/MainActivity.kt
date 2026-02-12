@@ -147,28 +147,37 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                 },
                 onBack = { matchToEditId = null }
             )
-        } else if (selectedMatchForDetails != null) {
+        } else if (selectedMatchForDetails != null && userProfile != null) {
             MatchDetailsScreen(
                 match = selectedMatchForDetails!!,
                 allUsers = allUsers,
+                allTeams = allTeams,
+                currentUser = userProfile!!,
                 onBack = { selectedMatchIdForDetails = null },
-                onEdit = { matchToEditId = selectedMatchIdForDetails },
+                onEdit = { matchToEditId = selectedMatchForDetails.id },
                 onSaveResults = { scoreMyTeam, scoreOpponent ->
-                    userViewModel.updateMatch(context, selectedMatchForDetails!!.copy(
+                    userViewModel.updateMatch(context, selectedMatchForDetails.copy(
                         scoreMyTeam = scoreMyTeam,
                         scoreOpponent = scoreOpponent
                     ))
                     selectedMatchIdForDetails = null
                 },
                 onRandomizeTeams = { teamA, teamB ->
-                    userViewModel.updateMatch(context, selectedMatchForDetails!!.copy(
+                    userViewModel.updateMatch(context, selectedMatchForDetails.copy(
                         teamAPlayers = teamA,
                         teamBPlayers = teamB
                     ))
                 },
                 onCancelMatch = {
-                    userViewModel.cancelMatch(context, selectedMatchForDetails!!.id)
+                    userViewModel.cancelMatch(context, selectedMatchForDetails.id)
                     selectedMatchIdForDetails = null
+                },
+                onUpdateStatus = { newStatus ->
+                    val updatedInvitations = selectedMatchForDetails.playerInvitations.toMutableMap()
+                    updatedInvitations[userProfile!!.id] = newStatus.name
+                    userViewModel.updateMatch(context, selectedMatchForDetails.copy(
+                        playerInvitations = updatedInvitations
+                    ))
                 }
             )
         } else {
@@ -232,7 +241,14 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                             onPlanMatchClick = { showPlanMatch = true },
                             onSignInClick = { userViewModel.signIn(context) },
                             onMatchClick = { match -> selectedMatchIdForDetails = match.id },
-                            onRefresh = { userViewModel.refreshData() }
+                            onRefresh = { userViewModel.refreshData() },
+                            onUpdateStatus = { match, newStatus ->
+                                if (userProfile != null) {
+                                    val updatedInvitations = match.playerInvitations.toMutableMap()
+                                    updatedInvitations[userProfile!!.id] = newStatus.name
+                                    userViewModel.updateMatch(context, match.copy(playerInvitations = updatedInvitations))
+                                }
+                            }
                         )
                         AppDestinations.ACCOUNT -> AccountScreen(
                             userProfile = userProfile,
@@ -251,6 +267,17 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                 }
             }
         }
+    }
+
+    // Overlay Icon Picker
+    if (showIconPicker) {
+        IconPickerScreen(
+            onIconSelected = { iconUrl ->
+                iconPickerCallback?.invoke(iconUrl)
+                showIconPicker = false
+            },
+            onBack = { showIconPicker = false }
+        )
     }
 }
 }

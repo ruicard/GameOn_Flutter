@@ -2,23 +2,23 @@ package com.example.rankup.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -26,7 +26,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.rankup.InvitationStatus
 import com.example.rankup.PlannedMatch
+import com.example.rankup.PlannedTeam
 import com.example.rankup.UserProfile
 import com.example.rankup.ui.theme.RankUpTheme
 import java.text.SimpleDateFormat
@@ -37,11 +39,14 @@ import java.util.*
 fun MatchDetailsScreen(
     match: PlannedMatch,
     allUsers: List<UserProfile>,
+    allTeams: List<PlannedTeam>,
+    currentUser: UserProfile,
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onSaveResults: (Int?, Int?) -> Unit,
     onRandomizeTeams: (List<String>, List<String>) -> Unit,
     onCancelMatch: () -> Unit,
+    onUpdateStatus: (InvitationStatus) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -52,6 +57,8 @@ fun MatchDetailsScreen(
 
     var scoreMyTeamText by remember { mutableStateOf(match.scoreMyTeam?.toString() ?: "") }
     var scoreOpponentText by remember { mutableStateOf(match.scoreOpponent?.toString() ?: "") }
+
+    var selectedTeamName by remember { mutableStateOf(match.myTeam) }
 
     Column(
         modifier = modifier
@@ -174,74 +181,129 @@ fun MatchDetailsScreen(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Button(
-                    onClick = { /* View team details */ },
+                    onClick = { selectedTeamName = match.myTeam },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF212121))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedTeamName == match.myTeam) Color(0xFF212121) else Color(0xFFE0E0E0),
+                        contentColor = if (selectedTeamName == match.myTeam) Color.White else Color.Black
+                    )
                 ) {
-                    Text(text = match.myTeam, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = match.myTeam, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
 
                 Button(
-                    onClick = { /* View opponent details */ },
+                    onClick = { selectedTeamName = match.opponent },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedTeamName == match.opponent) Color(0xFF212121) else Color(0xFFE0E0E0),
+                        contentColor = if (selectedTeamName == match.opponent) Color.White else Color.Black
+                    )
                 ) {
-                    Text(text = match.opponent, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = match.opponent, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-        } else {
-            // Player type
-            val invitedPlayers = allUsers.filter { match.invitedPlayers.contains(it.id) }
-            val teamAPlayers = allUsers.filter { match.teamAPlayers.contains(it.id) }
-            val teamBPlayers = allUsers.filter { match.teamBPlayers.contains(it.id) }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (teamAPlayers.isEmpty() && teamBPlayers.isEmpty()) "Invited Players" else "Teams Structure",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    text = "Invites",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color.Gray)
                 )
-                // Random Teams button only shown for upcoming matches (!isPast)
-                if (!isPast && match.invitedPlayers.size >= 2) {
-                    Button(
-                        onClick = {
-                            val shuffled = match.invitedPlayers.shuffled()
-                            val mid = shuffled.size / 2
-                            val teamA = shuffled.subList(0, mid)
-                            val teamB = shuffled.subList(mid, shuffled.size)
-                            onRandomizeTeams(teamA, teamB)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Random Teams", fontSize = 12.sp)
-                    }
-                }
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color.Gray)
+                )
             }
             
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            val currentTeam = allTeams.find { it.name == selectedTeamName }
+            val teamMembers = currentTeam?.members ?: emptyList()
+            val playersToShow = allUsers.filter { teamMembers.contains(it.id) }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(playersToShow) { player ->
+                    val status = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                    PlayerInvitationItem(player, status, currentUser.id, onUpdateStatus)
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                }
+            }
+
+        } else {
+            // Player type
+            val teamAPlayers = allUsers.filter { match.teamAPlayers.contains(it.id) }
+            val teamBPlayers = allUsers.filter { match.teamBPlayers.contains(it.id) }
+            val unallocatedPlayers = allUsers.filter { match.invitedPlayers.contains(it.id) && !match.teamAPlayers.contains(it.id) && !match.teamBPlayers.contains(it.id) }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (teamAPlayers.isEmpty() && teamBPlayers.isEmpty()) "Invites" else "Teams Structure",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color.Gray)
+                )
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color.Gray)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (teamAPlayers.isEmpty() && teamBPlayers.isEmpty()) {
-                    items(invitedPlayers) { player ->
-                        PlayerItem(player)
+                    items(unallocatedPlayers) { player ->
+                        val status = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                        PlayerInvitationItem(player, status, currentUser.id, onUpdateStatus)
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                     }
                 } else {
-                    item { Text("Team A", style = MaterialTheme.typography.labelLarge, color = Color.Gray) }
-                    items(teamAPlayers) { player -> PlayerItem(player) }
+                    item { Text("Team A", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                    items(teamAPlayers) { player ->
+                        val status = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                        PlayerInvitationItem(player, status, currentUser.id, onUpdateStatus)
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                    }
                     item { Spacer(modifier = Modifier.height(16.dp)) }
-                    item { Text("Team B", style = MaterialTheme.typography.labelLarge, color = Color.Gray) }
-                    items(teamBPlayers) { player -> PlayerItem(player) }
+                    item { Text("Team B", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                    items(teamBPlayers) { player ->
+                        val status = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                        PlayerInvitationItem(player, status, currentUser.id, onUpdateStatus)
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                    }
+                }
+                
+                if (!isPast && match.invitedPlayers.size >= 2) {
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = {
+                                val shuffled = match.invitedPlayers.shuffled()
+                                val mid = shuffled.size / 2
+                                onRandomizeTeams(shuffled.subList(0, mid), shuffled.subList(mid, shuffled.size))
+                            },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(28.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
+                        ) {
+                            Text("Randomize Teams", color = Color.White)
+                        }
+                    }
                 }
             }
         }
@@ -338,26 +400,126 @@ fun MatchDetailsScreen(
 }
 
 @Composable
-private fun PlayerItem(player: UserProfile) {
+private fun PlayerInvitationItem(
+    player: UserProfile,
+    status: String,
+    currentUserId: String,
+    onUpdateStatus: (InvitationStatus) -> Unit
+) {
+    var isEditing by remember { mutableStateOf(false) }
+
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.Default.Person,
-            contentDescription = null,
-            tint = Color.Gray,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
+        val isMe = player.id == currentUserId
+        val displayName = if (isMe) "${player.name ?: player.email} (you)" else player.name ?: player.email
+        
         Text(
-            text = player.name ?: player.email,
-            style = MaterialTheme.typography.bodyLarge
+            text = displayName,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+            modifier = Modifier.weight(1f)
         )
+
+        if (isMe && isEditing) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Tentative Icon
+                Icon(
+                    imageVector = if (status == InvitationStatus.TENTATIVE.name) Icons.Default.Help else Icons.Default.HelpOutline,
+                    contentDescription = "Tentative",
+                    tint = Color(0xFFFFA000),
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { 
+                            onUpdateStatus(InvitationStatus.TENTATIVE)
+                            isEditing = false
+                        }
+                )
+                // Declined Icon
+                Icon(
+                    imageVector = if (status == InvitationStatus.DECLINED.name) Icons.Default.Cancel else Icons.Default.HighlightOff,
+                    contentDescription = "Declined",
+                    tint = Color(0xFFF44336),
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { 
+                            onUpdateStatus(InvitationStatus.DECLINED)
+                            isEditing = false
+                        }
+                )
+                // Accepted Icon
+                Icon(
+                    imageVector = if (status == InvitationStatus.ACCEPTED.name) Icons.Default.CheckCircle else Icons.Default.CheckCircleOutline,
+                    contentDescription = "Accepted",
+                    tint = Color(0xFF00897B),
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { 
+                            onUpdateStatus(InvitationStatus.ACCEPTED)
+                            isEditing = false
+                        }
+                )
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (isMe) {
+                    Text(
+                        text = "Edit Status",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF3F51B5),
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .clickable { isEditing = true }
+                            .padding(horizontal = 8.dp)
+                    )
+                }
+
+                if (status == InvitationStatus.NO_ANSWER.name) {
+                    Box(
+                        modifier = Modifier.size(28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp) // Visually smaller circle to match other icons' actual content
+                                .clip(CircleShape)
+                                .background(Color(0xFFBDBDBD)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "No Answer",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                } else {
+                    val (icon, color) = when(status) {
+                        InvitationStatus.ACCEPTED.name -> Icons.Default.CheckCircle to Color(0xFF00897B)
+                        InvitationStatus.DECLINED.name -> Icons.Default.Cancel to Color(0xFFF44336)
+                        InvitationStatus.TENTATIVE.name -> Icons.Default.Help to Color(0xFFFFA000)
+                        else -> Icons.Default.MoreHoriz to Color.Gray
+                    }
+                    
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = status,
+                        tint = color,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        }
     }
-    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
 }
 
 @Preview(showBackground = true)
@@ -374,11 +536,14 @@ fun MatchDetailsScreenPreview() {
                 matchType = "Team"
             ),
             allUsers = emptyList(),
+            allTeams = emptyList(),
+            currentUser = UserProfile(id = "me", name = "Me"),
             onBack = {},
             onEdit = {},
             onSaveResults = { _, _ -> },
             onRandomizeTeams = { _, _ -> },
-            onCancelMatch = {}
+            onCancelMatch = {},
+            onUpdateStatus = {}
         )
     }
 }

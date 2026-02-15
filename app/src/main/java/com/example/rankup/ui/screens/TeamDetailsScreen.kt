@@ -55,7 +55,7 @@ fun TeamDetailsScreen(
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Team info", "Players")
 
     var name by remember { mutableStateOf(team.name) }

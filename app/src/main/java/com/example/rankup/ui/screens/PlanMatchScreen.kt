@@ -66,8 +66,15 @@ fun PlanMatchScreen(
     var selectedTeam by remember { mutableStateOf("") }
     var opponentText by remember { mutableStateOf("") }
     var opponentExpanded by remember { mutableStateOf(false) }
+
+    // Filter user teams by selected modality
+    val filteredUserTeams = userTeams.filter { it.sport == selectedModalityName }
+
+    // Filter opponent teams by selected modality, name, and exclude selected user team
     val filteredOpponents = allTeams.filter { 
-        it.name.contains(opponentText, ignoreCase = true) && it.name != selectedTeam 
+        it.sport == selectedModalityName &&
+        it.name.contains(opponentText, ignoreCase = true) && 
+        it.name != selectedTeam 
     }
 
     // Player mode states
@@ -137,6 +144,8 @@ fun PlanMatchScreen(
                                     if (selectedModalityName != sport.name) {
                                         selectedModalityName = sport.name
                                         selectedMatchType = ""
+                                        selectedTeam = "" // Clear team selection when modality changes
+                                        opponentText = "" // Clear opponent selection when modality changes
                                     }
                                     modalityExpanded = false
                                 }
@@ -212,7 +221,7 @@ fun PlanMatchScreen(
                             shape = MaterialTheme.shapes.medium
                         )
                         ExposedDropdownMenu(expanded = teamExpanded, onDismissRequest = { teamExpanded = false }) {
-                            userTeams.forEach { team -> 
+                            filteredUserTeams.forEach { team -> 
                                 DropdownMenuItem(text = { Text(team.name) }, onClick = { selectedTeam = team.name; teamExpanded = false }) 
                             }
                         }

@@ -31,16 +31,16 @@ fun IconPickerScreen(
     modifier: Modifier = Modifier
 ) {
     // Categories using high-quality sports and team icons
-    val categories = listOf("sports", "teams", "fitness", "games")
+    val categories = listOf("futsal", "padel", "player")
     var selectedCategory by remember { mutableStateOf(categories[0]) }
     
     // Using a consistent set of high-quality Flaticon IDs
     val iconIds = remember(selectedCategory) {
         when(selectedCategory) {
-            "sports" -> listOf("166344", "166345", "166346", "166347", "166348", "166349", "166350", "166351", "166352", "166353")
-            "teams" -> listOf("166354", "166355", "166356", "166357", "166358", "166359", "166360", "166361", "166362", "166363")
-            "fitness" -> listOf("166364", "166365", "166366", "166367", "166368", "166369", "166370", "166371", "166372", "166373")
-            else -> listOf("166374", "166375", "166376", "166377", "166378", "166379", "166380", "166381", "166382", "166383")
+            "player" -> listOf("128/3840/3840481.png", "128/2906/2906401.png", "128/166/166344.png", "128/560/560178.png", "128/5025/5025661.png", "128/5210/5210542.png", "128/4216/4216530.png", "128/7039/7039027.png", "128/1499/1499853.png", "128/2348/2348789.png", "128/5281/5281619.png", "128/4389/4389644.png", "128/12524/12524844.png", "128/2173/2173430.png")
+            "padel" -> listOf("128/8842/8842175.png", "128/19030/19030323.png", "128/19030/19030325.png", "128/19030/19030307.png", "128/15459/15459659.png", "128/16117/16117685.png", "128/8845/8845451.png", "128/19030/19030321.png", "128/19030/19030340.png", "128/19030/19030342.png")
+            "futsal" -> listOf("128/17728/17728970.png", "128/919/919459.png", "128/10841/10841200.png", "128/8920/8920689.png", "128/4276/4276494.png", "128/8920/8920729.png", "128/9192/9192876.png", "128/5701/5701802.png", "128/3461/3461211.png", "128/9192/9192889.png", "128/824/824746.png")
+            else -> listOf("")
         }
     }
 
@@ -105,7 +105,7 @@ fun IconPickerScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 items(iconIds) { id ->
-                    val url = "https://cdn-icons-png.flaticon.com/512/166/$id.png"
+                    val url = "https://cdn-icons-png.flaticon.com/$id"
                     Box(
                         modifier = Modifier
                             .aspectRatio(1f)

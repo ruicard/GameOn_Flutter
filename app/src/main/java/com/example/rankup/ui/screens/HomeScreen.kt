@@ -30,6 +30,7 @@ import coil.compose.AsyncImage
 import com.example.rankup.InvitationStatus
 import com.example.rankup.PlannedMatch
 import com.example.rankup.PlannedTeam
+import com.example.rankup.SportModel
 import com.example.rankup.UserProfile
 import com.example.rankup.ui.theme.RankUpTheme
 import java.text.SimpleDateFormat
@@ -41,17 +42,20 @@ fun HomeScreen(
     userProfile: UserProfile?,
     plannedMatches: List<PlannedMatch>,
     allTeams: List<PlannedTeam>,
+    availableSports: List<SportModel>,
     isRefreshing: Boolean,
     onPlanMatchClick: () -> Unit,
     onSignInClick: () -> Unit,
     onMatchClick: (PlannedMatch) -> Unit,
     onRefresh: () -> Unit,
     onUpdateStatus: (PlannedMatch, InvitationStatus) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    allUsers: List<UserProfile> = emptyList(), // Added missing parameter from MainActivity usage
+    onUpdateMatch: (PlannedMatch) -> Unit = {} // Added missing parameter from MainActivity usage
 ) {
     val now = Calendar.getInstance().time
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-    
+
     val (pastMatches, upcomingMatches) = plannedMatches.partition {
         try {
             val matchDate = sdf.parse(it.dateTime)
@@ -61,11 +65,11 @@ fun HomeScreen(
         }
     }
 
-    val sortedUpcoming = upcomingMatches.sortedBy { 
+    val sortedUpcoming = upcomingMatches.sortedBy {
         try { sdf.parse(it.dateTime)?.time ?: Long.MAX_VALUE } catch (e: Exception) { Long.MAX_VALUE }
     }
-    
-    val sortedPast = pastMatches.sortedByDescending { 
+
+    val sortedPast = pastMatches.sortedByDescending {
         try { sdf.parse(it.dateTime)?.time ?: 0L } catch (e: Exception) { 0L }
     }
 
@@ -157,7 +161,7 @@ fun HomeScreen(
                                 Spacer(modifier = Modifier.height(12.dp))
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                                     items(sortedUpcoming) { match ->
-                                        NextMatchCard(match, allTeams, onClick = { onMatchClick(match) })
+                                        NextMatchCard(match, allTeams, availableSports, onClick = { onMatchClick(match) })
                                     }
                                 }
                             }
@@ -171,8 +175,8 @@ fun HomeScreen(
                             Text("Previous matches", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                             Spacer(modifier = Modifier.height(12.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                                items(sortedPast) { match -> 
-                                    PreviousMatchCard(match, allTeams, onClick = { onMatchClick(match) }) 
+                                items(sortedPast) { match ->
+                                    PreviousMatchCard(match, allTeams, onClick = { onMatchClick(match) })
                                 }
                             }
                         }
@@ -205,9 +209,9 @@ fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
         }
     } catch (e: Exception) {}
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), 
-        shape = RoundedCornerShape(24.dp), 
-        colors = CardDefaults.cardColors(containerColor = Color.White), 
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -220,7 +224,7 @@ fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(16.dp))
             Column {
                 Text(
-                    text = "Upcoming match • ${match.modality}", 
+                    text = "Upcoming match • ${match.modality}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 Text(match.location, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
@@ -287,7 +291,7 @@ fun InvitationPendingCard(
                 )
                 Text(match.location, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
             }
-            
+
             if (isEditing) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -340,7 +344,7 @@ fun InvitationPendingCard(
 }
 
 @Composable
-fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () -> Unit) {
+fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, availableSports: List<SportModel>, onClick: () -> Unit) {
     var formattedDate = match.dateTime
     try {
         val sdfInput = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -351,31 +355,61 @@ fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () 
     if (match.matchType == "Team") {
         val myTeamObj = allTeams.find { it.name == match.myTeam }
         val opponentObj = allTeams.find { it.name == match.opponent }
+        val sportObj = availableSports.find { it.name == match.modality }
+        val minPlayersPerMatch = sportObj?.minPlayersMatch ?: 4
+        val requiredPerTeam = minPlayersPerMatch / 2
+
+        val myTeamAccepted = myTeamObj?.members?.count { match.playerInvitations[it] == InvitationStatus.ACCEPTED.name } ?: 0
+        val myTeamDeclined = myTeamObj?.members?.count { match.playerInvitations[it] == InvitationStatus.DECLINED.name } ?: 0
+        val myTeamTentative = myTeamObj?.members?.count { match.playerInvitations[it] == InvitationStatus.TENTATIVE.name } ?: 0
+        val myTeamTotal = myTeamObj?.members?.size ?: 0
+
+        val opponentAccepted = opponentObj?.members?.count { match.playerInvitations[it] == InvitationStatus.ACCEPTED.name } ?: 0
+        val opponentDeclined = opponentObj?.members?.count { match.playerInvitations[it] == InvitationStatus.DECLINED.name } ?: 0
+        val opponentTentative = opponentObj?.members?.count { match.playerInvitations[it] == InvitationStatus.TENTATIVE.name } ?: 0
+        val opponentTotal = opponentObj?.members?.size ?: 0
 
         Card(
-            modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
-            shape = RoundedCornerShape(24.dp), 
-            colors = CardDefaults.cardColors(containerColor = Color.White), 
+            modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text(formattedDate, fontSize = 12.sp, color = Color.Gray)
+                    //Text(minPlayersPerMatch.toString(), fontSize = 12.sp, color = Color.Gray)
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TeamAvatar(match.myTeam, Color(0xFFFFE082), modifier = Modifier.weight(1f), imageUrl = myTeamObj?.profilePictureUrl)
-                    TeamAvatar(match.opponent, Color(0xFFA5D6A7), modifier = Modifier.weight(1f), imageUrl = opponentObj?.profilePictureUrl)
+                    TeamAvatar(
+                        name = match.myTeam,
+                        color = Color(0xFFFFE082),
+                        modifier = Modifier.weight(1f),
+                        imageUrl = myTeamObj?.profilePictureUrl,
+                        isAccepted = myTeamAccepted >= requiredPerTeam,
+                        isDeclined = myTeamDeclined > (myTeamTotal - requiredPerTeam),
+                        isTentative = myTeamTentative > (myTeamTotal - requiredPerTeam)
+                    )
+                    TeamAvatar(
+                        name = match.opponent,
+                        color = Color(0xFFA5D6A7),
+                        modifier = Modifier.weight(1f),
+                        imageUrl = opponentObj?.profilePictureUrl,
+                        isAccepted = opponentAccepted >= requiredPerTeam,
+                        isDeclined = opponentDeclined > (opponentTotal - requiredPerTeam),
+                        isTentative = opponentTentative > (opponentTotal - requiredPerTeam)
+                    )
                 }
             }
         }
     } else {
         // Player Type Match Card - Matches Team box size
         Card(
-            modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick), 
-            shape = RoundedCornerShape(24.dp), 
-            colors = CardDefaults.cardColors(containerColor = Color.White), 
+            modifier = Modifier.width(220.dp).height(180.dp).clickable(onClick = onClick),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -383,9 +417,9 @@ fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () 
                     Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(formattedDate, fontSize = 12.sp, color = Color.Gray)
                 }
-                
+
                 Spacer(modifier = Modifier.height(2.dp))
-                
+
                 val invitations = match.playerInvitations
                 val accepted = invitations.values.count { it == InvitationStatus.ACCEPTED.name }
                 val declined = invitations.values.count { it == InvitationStatus.DECLINED.name }
@@ -439,29 +473,50 @@ fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick:
         val date = sdfInput.parse(match.dateTime)
         if (date != null) formattedDate = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(date)
     } catch (e: Exception) {}
-    
+
     val missingResults = match.scoreMyTeam == null || match.scoreOpponent == null
     val myTeamObj = allTeams.find { it.name == match.myTeam }
     val opponentObj = allTeams.find { it.name == match.opponent }
 
     Column(modifier = Modifier.width(220.dp)) {
         Card(
-            modifier = Modifier.fillMaxWidth().height(180.dp).clickable(onClick = onClick), 
-            shape = RoundedCornerShape(24.dp), 
-            colors = CardDefaults.cardColors(containerColor = Color.White), 
+            modifier = Modifier.fillMaxWidth().height(180.dp).clickable(onClick = onClick),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             border = if (missingResults) BorderStroke(1.dp, Color(0xFFE91E63)) else null
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(match.modality, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(formattedDate, fontSize = 12.sp, color = Color.Gray)
                 }
                 Spacer(modifier = Modifier.height(20.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    TeamAvatar(match.myTeam, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreMyTeam, imageUrl = myTeamObj?.profilePictureUrl)
-                    Text("vs", modifier = Modifier.padding(horizontal = 4.dp), color = Color.Gray, fontSize = 12.sp)
-                    TeamAvatar(match.opponent, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreOpponent, imageUrl = opponentObj?.profilePictureUrl)
+                
+                if (match.matchType == "Player") {
+                    // Roll back to two circles and team names below
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                            Box(modifier = Modifier.size(70.dp).clip(CircleShape).background(Color(0xFFBDBDBD)), contentAlignment = Alignment.Center) {
+                                Text(text = (match.scoreMyTeam ?: 0).toString(), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = if (match.myTeam.isNotEmpty()) match.myTeam else "Team A", fontSize = 11.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                            Box(modifier = Modifier.size(70.dp).clip(CircleShape).background(Color(0xFFBDBDBD)), contentAlignment = Alignment.Center) {
+                                Text(text = (match.scoreOpponent ?: 0).toString(), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = if (match.opponent.isNotEmpty()) match.opponent else "Team B", fontSize = 11.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        TeamAvatar(match.myTeam, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreMyTeam, imageUrl = myTeamObj?.profilePictureUrl)
+                        Text("vs", modifier = Modifier.padding(horizontal = 4.dp), color = Color.Gray, fontSize = 12.sp)
+                        TeamAvatar(match.opponent, Color(0xFFBDBDBD), modifier = Modifier.weight(1f), showMore = false, score = match.scoreOpponent, imageUrl = opponentObj?.profilePictureUrl)
+                    }
                 }
             }
         }
@@ -469,15 +524,15 @@ fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick:
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
                 Icon(
-                    imageVector = Icons.Default.Error, 
-                    contentDescription = null, 
+                    imageVector = Icons.Default.Error,
+                    contentDescription = null,
                     tint = Color(0xFFE91E63),
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Missing match results", 
-                    color = Color.Black, 
+                    text = "Missing match results",
+                    color = Color.Black,
                     fontSize = 12.sp
                 )
             }
@@ -486,7 +541,7 @@ fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick:
 }
 
 @Composable
-fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier, showMore: Boolean = true, score: Int? = null, imageUrl: String? = null) {
+fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier, showMore: Boolean = true, score: Int? = null, imageUrl: String? = null, isAccepted: Boolean = false, isDeclined: Boolean = false, isTentative: Boolean = false) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center) {
             Box(modifier = Modifier.size(70.dp).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
@@ -504,7 +559,25 @@ fun TeamAvatar(name: String, color: Color, modifier: Modifier = Modifier, showMo
                     }
                 }
             }
-            if (showMore) {
+            if (isAccepted) {
+                Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.BottomEnd) {
+                    Surface(modifier = Modifier.size(24.dp).clip(CircleShape), color = Color(0xFF00897B)) {
+                        Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.padding(4.dp))
+                    }
+                }
+            } else if (isDeclined) {
+                Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.BottomEnd) {
+                    Surface(modifier = Modifier.size(24.dp).clip(CircleShape), color = Color(0xFFF44336)) {
+                        Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.padding(4.dp))
+                    }
+                }
+            } else if (isTentative) {
+                Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.BottomEnd) {
+                    Surface(modifier = Modifier.size(24.dp).clip(CircleShape), color = Color(0xFFFFA000)) {
+                        Icon(Icons.Default.HelpOutline, null, tint = Color.White, modifier = Modifier.padding(4.dp))
+                    }
+                }
+            } else if (showMore) {
                 Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.BottomEnd) {
                     Surface(modifier = Modifier.size(24.dp).clip(CircleShape), color = Color.Gray.copy(alpha = 0.8f)) {
                         Icon(Icons.Default.MoreHoriz, null, tint = Color.White, modifier = Modifier.padding(2.dp))

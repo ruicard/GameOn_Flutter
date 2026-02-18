@@ -1,6 +1,5 @@
 package com.example.rankup
 
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -107,7 +106,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             )
         } else if (selectedTeamForDetails != null && userProfile != null) {
             TeamDetailsScreen(
-                team = selectedTeamForDetails!!,
+                team = selectedTeamForDetails,
                 currentUser = userProfile!!,
                 allUsers = allUsers,
                 availableSports = availableSports,
@@ -127,7 +126,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             )
         } else if (matchToEdit != null) {
             EditMatchScreen(
-                match = matchToEdit!!,
+                match = matchToEdit,
                 availableSports = availableSports,
                 userTeams = userTeams,
                 allTeams = allTeams,
@@ -141,7 +140,7 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             )
         } else if (selectedMatchForDetails != null && userProfile != null) {
             MatchDetailsScreen(
-                match = selectedMatchForDetails!!,
+                match = selectedMatchForDetails,
                 allUsers = allUsers,
                 allTeams = allTeams,
                 currentUser = userProfile!!,
@@ -164,9 +163,9 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                     userViewModel.cancelMatch(context, selectedMatchForDetails.id)
                     selectedMatchIdForDetails = null
                 },
-                onUpdateStatus = { newStatus ->
+                onUpdateStatus = { playerId, newStatus ->
                     val updatedInvitations = selectedMatchForDetails.playerInvitations.toMutableMap()
-                    updatedInvitations[userProfile!!.id] = newStatus.name
+                    updatedInvitations[playerId] = newStatus.name
                     userViewModel.updateMatch(context, selectedMatchForDetails.copy(
                         playerInvitations = updatedInvitations
                     ))

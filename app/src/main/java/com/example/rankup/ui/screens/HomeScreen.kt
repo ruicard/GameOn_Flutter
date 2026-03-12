@@ -2,11 +2,14 @@ package com.example.rankup.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -138,19 +141,17 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    if (sortedUpcoming.isNotEmpty()) {
+                    if (pendingInvitations.isNotEmpty()) {
+                        item {
+                            InvitationsPager(
+                                invitations = pendingInvitations,
+                                onClick = onMatchClick,
+                                onUpdateStatus = onUpdateStatus
+                            )
+                        }
+                    } else if (sortedUpcoming.isNotEmpty()) {
                         item {
                             UpcomingMatchCard(sortedUpcoming.first(), onClick = { onMatchClick(sortedUpcoming.first()) })
-                        }
-                    }
-
-                    if (pendingInvitations.isNotEmpty()) {
-                        items(pendingInvitations) { match ->
-                            InvitationPendingCard(
-                                match = match,
-                                onClick = { onMatchClick(match) },
-                                onUpdateStatus = { status -> onUpdateStatus(match, status) }
-                            )
                         }
                     }
 
@@ -239,24 +240,16 @@ fun InvitationPendingCard(
     onClick: () -> Unit,
     onUpdateStatus: (InvitationStatus) -> Unit
 ) {
-    val calendar = Calendar.getInstance()
-    var dayOfWeek = "---"
-    var dayOfMonth = "--"
-    var monthAbbr = "---"
-    var timeStr = "--:--"
+    var formattedDate = "--.--.----"
     try {
         val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
         val date = sdf.parse(match.dateTime)
         if (date != null) {
-            calendar.time = date
-            dayOfWeek = SimpleDateFormat("EEE", Locale.getDefault()).format(date).uppercase()
-            dayOfMonth = SimpleDateFormat("dd", Locale.getDefault()).format(date)
-            monthAbbr = SimpleDateFormat("MMM", Locale.getDefault()).format(date).uppercase()
-            timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(date)
+            formattedDate = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(date)
         }
     } catch (e: Exception) {}
 
-    var isEditing by remember { mutableStateOf(false) }
+    var selectedStatus by remember(match.id) { mutableStateOf<InvitationStatus?>(null) }
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -265,83 +258,141 @@ fun InvitationPendingCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = BorderStroke(1.dp, Color(0xFFE91E63))
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE0E0E0)),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(dayOfWeek, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    Text(dayOfMonth, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Invite pending - ${match.modality}",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Tentative
+                    val tentativeSelected = selectedStatus == InvitationStatus.TENTATIVE
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (tentativeSelected) Color(0xFFFFA000) else Color.Transparent)
+                            .border(1.5.dp, Color(0xFFFFA000), CircleShape)
+                            .clickable { selectedStatus = InvitationStatus.TENTATIVE },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Tentative",
+                            tint = if (tentativeSelected) Color.White else Color(0xFFFFA000),
+                            modifier = Modifier.size(20.dp))
+                    }
+                    // Decline
+                    val declineSelected = selectedStatus == InvitationStatus.DECLINED
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (declineSelected) Color(0xFFE91E63) else Color.Transparent)
+                            .border(1.5.dp, Color(0xFFE91E63), CircleShape)
+                            .clickable { selectedStatus = InvitationStatus.DECLINED },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Decline",
+                            tint = if (declineSelected) Color.White else Color(0xFFE91E63),
+                            modifier = Modifier.size(20.dp))
+                    }
+                    // Accept
+                    val acceptSelected = selectedStatus == InvitationStatus.ACCEPTED
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (acceptSelected) Color(0xFF009688) else Color.Transparent)
+                            .border(1.5.dp, Color(0xFF009688), CircleShape)
+                            .clickable { selectedStatus = InvitationStatus.ACCEPTED },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = "Accept",
+                            tint = if (acceptSelected) Color.White else Color(0xFF009688),
+                            modifier = Modifier.size(20.dp))
+                    }
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Invitation pending",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                )
-                Text(
-                    text = "${match.modality} - $dayOfMonth $monthAbbr - $timeStr",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Black
-                )
-                Text(match.location, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(formattedDate, style = MaterialTheme.typography.bodyMedium)
             }
-
-            if (isEditing) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.HelpOutline,
-                        contentDescription = "Tentative",
-                        tint = Color(0xFFFFA000),
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clickable { onUpdateStatus(InvitationStatus.TENTATIVE) }
-                    )
-                    Icon(
-                        imageVector = Icons.Default.HighlightOff,
-                        contentDescription = "Declined",
-                        tint = Color(0xFFF44336),
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clickable { onUpdateStatus(InvitationStatus.DECLINED) }
-                    )
-                    Icon(
-                        imageVector = Icons.Default.CheckCircleOutline,
-                        contentDescription = "Accepted",
-                        tint = Color(0xFF00897B),
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clickable { onUpdateStatus(InvitationStatus.ACCEPTED) }
-                    )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(match.location, style = MaterialTheme.typography.bodyMedium)
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFBDBDBD))
-                        .clickable { isEditing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreHoriz,
-                        contentDescription = "Pending",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                if (selectedStatus != null) {
+                    Text(
+                        text = "Save",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF3F51B5)
+                        ),
+                        modifier = Modifier.clickable { onUpdateStatus(selectedStatus!!) }
                     )
                 }
             }
         }
     }
 }
+
+@Composable
+fun InvitationsPager(
+    invitations: List<PlannedMatch>,
+    onClick: (PlannedMatch) -> Unit,
+    onUpdateStatus: (PlannedMatch, InvitationStatus) -> Unit
+) {
+    val pagerState = rememberPagerState(pageCount = { invitations.size })
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
+            val match = invitations[page]
+            InvitationPendingCard(
+                match = match,
+                onClick = { onClick(match) },
+                onUpdateStatus = { status -> onUpdateStatus(match, status) }
+            )
+        }
+        if (invitations.size > 1) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(invitations.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (index == pagerState.currentPage) 10.dp else 8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index == pagerState.currentPage) Color(0xFF3F51B5)
+                                else Color(0xFFBDBDBD)
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun NextMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, availableSports: List<SportModel>, onClick: () -> Unit) {

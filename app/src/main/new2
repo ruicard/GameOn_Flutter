@@ -1,0 +1,149 @@
+class UserProfile {
+  final String id;
+  final String? name;
+  final String email;
+  final String? profilePictureUrl;
+  final String username;
+  final String gender;
+  final String ageGroup;
+  final String city;
+
+  UserProfile({
+    this.id = '',
+    this.name,
+    required this.email,
+    this.profilePictureUrl,
+    this.username = '',
+    this.gender = 'UNKNOWN',
+    this.ageGroup = 'SENIOR_18_45',
+    this.city = '',
+  });
+
+  factory UserProfile.fromMap(Map<String, dynamic> map, String id) {
+    return UserProfile(
+      id: id,
+      name: map['name'],
+      email: map['email'] ?? '',
+      profilePictureUrl: map['profilePictureUrl'],
+      username: map['username'] ?? '',
+      gender: map['gender'] ?? 'UNKNOWN',
+      ageGroup: map['ageGroup'] ?? 'SENIOR_18_45',
+      city: map['city'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'email': email,
+      'profilePictureUrl': profilePictureUrl,
+      'username': username,
+      'gender': gender,
+      'ageGroup': ageGroup,
+      'city': city,
+    };
+  }
+}
+
+class PlannedMatch {
+  final String id;
+  final String modality;
+  final String matchType;
+  final String dateTime;
+  final String location;
+  final String myTeam;
+  final String opponent;
+  final String createdByUserId;
+  final List<String> invitedPlayers;
+  final int? scoreMyTeam;
+  final int? scoreOpponent;
+  final String status;
+  final List<String> teamAPlayers;
+  final List<String> teamBPlayers;
+  final Map<String, String> playerInvitations;
+
+  PlannedMatch({
+    required this.id,
+    required this.modality,
+    this.matchType = '',
+    required this.dateTime,
+    required this.location,
+    this.myTeam = '',
+    this.opponent = '',
+    this.createdByUserId = '',
+    this.invitedPlayers = const [],
+    this.scoreMyTeam,
+    this.scoreOpponent,
+    this.status = 'SCHEDULED',
+    this.teamAPlayers = const [],
+    this.teamBPlayers = const [],
+    this.playerInvitations = const {},
+  });
+
+  // Helper to copy object with changes (like Kotlin copy)
+  PlannedMatch copyWith({
+    int? scoreMyTeam,
+    int? scoreOpponent,
+    List<String>? teamAPlayers,
+    List<String>? teamBPlayers,
+    Map<String, String>? playerInvitations,
+    String? status,
+  }) {
+    return PlannedMatch(
+      id: id,
+      modality: modality,
+      matchType: matchType,
+      dateTime: dateTime,
+      location: location,
+      myTeam: myTeam,
+      opponent: opponent,
+      createdByUserId: createdByUserId,
+      invitedPlayers: invitedPlayers,
+      scoreMyTeam: scoreMyTeam ?? this.scoreMyTeam,
+      scoreOpponent: scoreOpponent ?? this.scoreOpponent,
+      status: status ?? this.status,
+      teamAPlayers: teamAPlayers ?? this.teamAPlayers,
+      teamBPlayers: teamBPlayers ?? this.teamBPlayers,
+      playerInvitations: playerInvitations ?? this.playerInvitations,
+    );
+  }
+
+  factory PlannedMatch.fromMap(Map<String, dynamic> map, String id) {
+    return PlannedMatch(
+      id: id,
+      modality: map['modality'] ?? '',
+      matchType: map['matchType'] ?? '',
+      dateTime: map['dateTime'] ?? '',
+      location: map['location'] ?? '',
+      myTeam: map['myTeam'] ?? '',
+      opponent: map['opponent'] ?? '',
+      createdByUserId: map['createdByUserId'] ?? '',
+      invitedPlayers: List<String>.from(map['invitedPlayers'] ?? []),
+      scoreMyTeam: map['scoreMyTeam'],
+      scoreOpponent: map['scoreOpponent'],
+      status: map['status'] ?? 'SCHEDULED',
+      teamAPlayers: List<String>.from(map['teamAPlayers'] ?? []),
+      teamBPlayers: List<String>.from(map['teamBPlayers'] ?? []),
+      playerInvitations: Map<String, String>.from(map['playerInvitations'] ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'modality': modality,
+      'matchType': matchType,
+      'dateTime': dateTime,
+      'location': location,
+      'myTeam': myTeam,
+      'opponent': opponent,
+      'createdByUserId': createdByUserId,
+      'invitedPlayers': invitedPlayers,
+      'scoreMyTeam': scoreMyTeam,
+      'scoreOpponent': scoreOpponent,
+      'status': status,
+      'teamAPlayers': teamAPlayers,
+      'teamBPlayers': teamBPlayers,
+      'playerInvitations': playerInvitations,
+    };
+  }
+}

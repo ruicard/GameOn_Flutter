@@ -74,9 +74,10 @@ fun MatchDetailsScreen(
     // Drag and Drop State
     var draggingPlayerId by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    var teamAHeaderBounds by remember { mutableStateOf<Rect?>(null) }
-    var teamBHeaderBounds by remember { mutableStateOf<Rect?>(null) }
-    var unallocatedHeaderBounds by remember { mutableStateOf<Rect?>(null) }
+    // Full-section bounds (header + all player rows) used for drop-target detection
+    var teamABounds by remember { mutableStateOf<Rect?>(null) }
+    var teamBBounds by remember { mutableStateOf<Rect?>(null) }
+    var unallocatedBounds by remember { mutableStateOf<Rect?>(null) }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -197,6 +198,16 @@ fun MatchDetailsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // Compute unallocated player IDs here (outer scope) so the Save Results
+            // button can reference it regardless of which branch renders below.
+            val unallocatedPlayerIds = if (match.matchType == "Player") {
+                match.playerInvitations.keys.filter {
+                    !match.teamAPlayers.contains(it) && !match.teamBPlayers.contains(it)
+                }
+            } else {
+                emptyList() // Team-type matches have no manual allocation
+            }
+
             if (match.matchType == "Team") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -278,7 +289,15 @@ fun MatchDetailsScreen(
                 // Player type with Drag and Drop support
                 val teamAPlayers = allUsers.filter { match.teamAPlayers.contains(it.id) }
                 val teamBPlayers = allUsers.filter { match.teamBPlayers.contains(it.id) }
-                val unallocatedPlayers = allUsers.filter { match.invitedPlayers.contains(it.id) && !match.teamAPlayers.contains(it.id) && !match.teamBPlayers.contains(it.id) }
+                // Use playerInvitations keys as the authoritative invited-player list;
+                // it is always kept in sync by normalizeInvitationState on every save.
+                val invitedPlayerIds = match.playerInvitations.keys
+                // unallocatedPlayerIds is computed in the outer scope above
+                val unallocatedPlayers = allUsers.filter {
+                    it.id in invitedPlayerIds &&
+                    !match.teamAPlayers.contains(it.id) &&
+                    !match.teamBPlayers.contains(it.id)
+                }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -299,146 +318,166 @@ fun MatchDetailsScreen(
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Team A Section
+                    // ── Team A ────────────────────────────────────────────────
                     item {
-                        SectionHeader(
-                            title = "Team A",
-                            isDropTarget = draggingPlayerId != null && teamAHeaderBounds?.contains(dragOffset) == true,
-                            onPositioned = { teamAHeaderBounds = it }
-                        )
-                    }
-                    items(teamAPlayers) { player ->
-                        DraggablePlayerWrapper(
-                            player = player,
-                            isDragging = draggingPlayerId == player.id,
-                            onDragStart = { draggingPlayerId = player.id; dragOffset = it },
-                            onDrag = { dragOffset += it },
-                            onDragEnd = {
-                                val currentId = draggingPlayerId
-                                if (currentId != null) {
-                                    val newTeamA = match.teamAPlayers.toMutableList()
-                                    val newTeamB = match.teamBPlayers.toMutableList()
-                                    newTeamA.remove(currentId)
-                                    newTeamB.remove(currentId)
-                                    if (teamAHeaderBounds?.contains(dragOffset) == true) newTeamA.add(currentId)
-                                    else if (teamBHeaderBounds?.contains(dragOffset) == true) newTeamB.add(currentId)
-                                    onRandomizeTeams(newTeamA, newTeamB)
-                                }
-                                draggingPlayerId = null
-                            }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onGloballyPositioned { teamABounds = it.boundsInWindow() }
                         ) {
-                            val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
-                            val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
-                                InvitationStatus.DECLINED.name
-                            } else {
-                                originalStatus
-                            }
-                            PlayerInvitationItem(
-                                player = player,
-                                status = effectiveStatus,
-                                currentUserId = currentUser.id,
-                                onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
-                                showDragHandle = true,
-                                isPast = isPast
+                            SectionHeader(
+                                title = "Team A",
+                                isDropTarget = draggingPlayerId != null && teamABounds?.contains(dragOffset) == true
                             )
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                        }
-                    }
-
-                    // Team B Section
-                    item { Spacer(modifier = Modifier.height(8.dp)) }
-                    item {
-                        SectionHeader(
-                            title = "Team B",
-                            isDropTarget = draggingPlayerId != null && teamBHeaderBounds?.contains(dragOffset) == true,
-                            onPositioned = { teamBHeaderBounds = it }
-                        )
-                    }
-                    items(teamBPlayers) { player ->
-                        DraggablePlayerWrapper(
-                            player = player,
-                            isDragging = draggingPlayerId == player.id,
-                            onDragStart = { draggingPlayerId = player.id; dragOffset = it },
-                            onDrag = { dragOffset += it },
-                            onDragEnd = {
-                                val currentId = draggingPlayerId
-                                if (currentId != null) {
-                                    val newTeamA = match.teamAPlayers.toMutableList()
-                                    val newTeamB = match.teamBPlayers.toMutableList()
-                                    newTeamA.remove(currentId)
-                                    newTeamB.remove(currentId)
-                                    if (teamAHeaderBounds?.contains(dragOffset) == true) newTeamA.add(currentId)
-                                    else if (teamBHeaderBounds?.contains(dragOffset) == true) newTeamB.add(currentId)
-                                    onRandomizeTeams(newTeamA, newTeamB)
-                                }
-                                draggingPlayerId = null
-                            }
-                        ) {
-                            val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
-                            val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
-                                InvitationStatus.DECLINED.name
-                            } else {
-                                originalStatus
-                            }
-                            PlayerInvitationItem(
-                                player = player,
-                                status = effectiveStatus,
-                                currentUserId = currentUser.id,
-                                onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
-                                showDragHandle = true,
-                                isPast = isPast
-                            )
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                        }
-                    }
-
-                    // Unallocated / Invites Section
-                    item { Spacer(modifier = Modifier.height(8.dp)) }
-                    item {
-                        SectionHeader(
-                            title = "Unallocated / Invites",
-                            isDropTarget = draggingPlayerId != null && unallocatedHeaderBounds?.contains(dragOffset) == true,
-                            onPositioned = { unallocatedHeaderBounds = it }
-                        )
-                    }
-                    if (unallocatedPlayers.isEmpty()) {
-                        item { Text("No unallocated players", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(start = 12.dp)) }
-                    } else {
-                        items(unallocatedPlayers) { player ->
-                            DraggablePlayerWrapper(
-                                player = player,
-                                isDragging = draggingPlayerId == player.id,
-                                onDragStart = { draggingPlayerId = player.id; dragOffset = it },
-                                onDrag = { dragOffset += it },
-                                onDragEnd = {
-                                    val currentId = draggingPlayerId
-                                    if (currentId != null) {
-                                        val newTeamA = match.teamAPlayers.toMutableList()
-                                        val newTeamB = match.teamBPlayers.toMutableList()
-                                        newTeamA.remove(currentId)
-                                        newTeamB.remove(currentId)
-                                        if (teamAHeaderBounds?.contains(dragOffset) == true) newTeamA.add(currentId)
-                                        else if (teamBHeaderBounds?.contains(dragOffset) == true) newTeamB.add(currentId)
-                                        onRandomizeTeams(newTeamA, newTeamB)
-                                    }
-                                    draggingPlayerId = null
-                                }
-                            ) {
-                                val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
-                                val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
-                                    InvitationStatus.DECLINED.name
-                                } else {
-                                    originalStatus
-                                }
-                                PlayerInvitationItem(
+                            teamAPlayers.forEach { player ->
+                                DraggablePlayerWrapper(
                                     player = player,
-                                    status = effectiveStatus,
-                                    currentUserId = currentUser.id,
-                                    onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
-                                    showDragHandle = true,
-                                    isPast = isPast
+                                    isDragging = draggingPlayerId == player.id,
+                                    onDragStart = { draggingPlayerId = player.id; dragOffset = it },
+                                    onDrag = { dragOffset += it },
+                                    onDragEnd = {
+                                        val currentId = draggingPlayerId
+                                        if (currentId != null) {
+                                            val newTeamA = match.teamAPlayers.toMutableList()
+                                            val newTeamB = match.teamBPlayers.toMutableList()
+                                            newTeamA.remove(currentId)
+                                            newTeamB.remove(currentId)
+                                            if (teamABounds?.contains(dragOffset) == true) newTeamA.add(currentId)
+                                            else if (teamBBounds?.contains(dragOffset) == true) newTeamB.add(currentId)
+                                            onRandomizeTeams(newTeamA, newTeamB)
+                                        }
+                                        draggingPlayerId = null
+                                    }
+                                ) {
+                                    val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                                    val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
+                                        InvitationStatus.DECLINED.name
+                                    } else {
+                                        originalStatus
+                                    }
+                                    PlayerInvitationItem(
+                                        player = player,
+                                        status = effectiveStatus,
+                                        currentUserId = currentUser.id,
+                                        onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
+                                        showDragHandle = true,
+                                        isPast = isPast
+                                    )
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Team B ────────────────────────────────────────────────
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onGloballyPositioned { teamBBounds = it.boundsInWindow() }
+                        ) {
+                            SectionHeader(
+                                title = "Team B",
+                                isDropTarget = draggingPlayerId != null && teamBBounds?.contains(dragOffset) == true
+                            )
+                            teamBPlayers.forEach { player ->
+                                DraggablePlayerWrapper(
+                                    player = player,
+                                    isDragging = draggingPlayerId == player.id,
+                                    onDragStart = { draggingPlayerId = player.id; dragOffset = it },
+                                    onDrag = { dragOffset += it },
+                                    onDragEnd = {
+                                        val currentId = draggingPlayerId
+                                        if (currentId != null) {
+                                            val newTeamA = match.teamAPlayers.toMutableList()
+                                            val newTeamB = match.teamBPlayers.toMutableList()
+                                            newTeamA.remove(currentId)
+                                            newTeamB.remove(currentId)
+                                            if (teamABounds?.contains(dragOffset) == true) newTeamA.add(currentId)
+                                            else if (teamBBounds?.contains(dragOffset) == true) newTeamB.add(currentId)
+                                            onRandomizeTeams(newTeamA, newTeamB)
+                                        }
+                                        draggingPlayerId = null
+                                    }
+                                ) {
+                                    val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                                    val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
+                                        InvitationStatus.DECLINED.name
+                                    } else {
+                                        originalStatus
+                                    }
+                                    PlayerInvitationItem(
+                                        player = player,
+                                        status = effectiveStatus,
+                                        currentUserId = currentUser.id,
+                                        onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
+                                        showDragHandle = true,
+                                        isPast = isPast
+                                    )
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Unallocated / Invites ─────────────────────────────────
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onGloballyPositioned { unallocatedBounds = it.boundsInWindow() }
+                        ) {
+                            SectionHeader(
+                                title = "Unallocated / Invites",
+                                isDropTarget = draggingPlayerId != null && unallocatedBounds?.contains(dragOffset) == true
+                            )
+                            if (unallocatedPlayers.isEmpty()) {
+                                Text(
+                                    "No unallocated players",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(start = 12.dp)
                                 )
-                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                            } else {
+                                unallocatedPlayers.forEach { player ->
+                                    DraggablePlayerWrapper(
+                                        player = player,
+                                        isDragging = draggingPlayerId == player.id,
+                                        onDragStart = { draggingPlayerId = player.id; dragOffset = it },
+                                        onDrag = { dragOffset += it },
+                                        onDragEnd = {
+                                            val currentId = draggingPlayerId
+                                            if (currentId != null) {
+                                                val newTeamA = match.teamAPlayers.toMutableList()
+                                                val newTeamB = match.teamBPlayers.toMutableList()
+                                                newTeamA.remove(currentId)
+                                                newTeamB.remove(currentId)
+                                                if (teamABounds?.contains(dragOffset) == true) newTeamA.add(currentId)
+                                                else if (teamBBounds?.contains(dragOffset) == true) newTeamB.add(currentId)
+                                                onRandomizeTeams(newTeamA, newTeamB)
+                                            }
+                                            draggingPlayerId = null
+                                        }
+                                    ) {
+                                        val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
+                                        val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
+                                            InvitationStatus.DECLINED.name
+                                        } else {
+                                            originalStatus
+                                        }
+                                        PlayerInvitationItem(
+                                            player = player,
+                                            status = effectiveStatus,
+                                            currentUserId = currentUser.id,
+                                            onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
+                                            showDragHandle = true,
+                                            isPast = isPast
+                                        )
+                                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                                    }
+                                }
                             }
                         }
                     }
@@ -523,7 +562,12 @@ fun MatchDetailsScreen(
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
-                    
+
+                    val hasUnallocated = unallocatedPlayerIds.isNotEmpty()
+                    val scoresEntered = scoreMyTeamText.isNotEmpty() && scoreOpponentText.isNotEmpty()
+                    val saveEnabled = !hasUnallocated && scoresEntered
+                    val saveButtonText = if (hasUnallocated) "Missing team Players allocation" else "Save Results"
+
                     Button(
                         onClick = {
                             onSaveResults(scoreMyTeamText.toIntOrNull(), scoreOpponentText.toIntOrNull())
@@ -531,9 +575,9 @@ fun MatchDetailsScreen(
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(28.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                        enabled = scoreMyTeamText.isNotEmpty() && scoreOpponentText.isNotEmpty()
+                        enabled = saveEnabled
                     ) {
-                        Text("Save Results", color = Color.White)
+                        Text(saveButtonText, color = Color.White)
                     }
                 }
             }
@@ -578,13 +622,11 @@ fun MatchDetailsScreen(
 @Composable
 private fun SectionHeader(
     title: String,
-    isDropTarget: Boolean,
-    onPositioned: (Rect) -> Unit
+    isDropTarget: Boolean
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .onGloballyPositioned { onPositioned(it.boundsInWindow()) }
             .background(if (isDropTarget) Color(0xFFE3F2FD) else Color.Transparent, RoundedCornerShape(8.dp))
             .padding(vertical = 4.dp, horizontal = 8.dp)
     ) {

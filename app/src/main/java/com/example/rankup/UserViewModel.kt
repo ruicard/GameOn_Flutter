@@ -6,6 +6,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
@@ -20,6 +21,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.toObject
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,7 +47,8 @@ data class UserProfile(
     val username: String = "",
     val gender: String = Gender.UNKNOWN.name,
     val ageGroup: String = AgeGroup.SENIOR_18_45.name,
-    val city: String = ""
+    val city: String = "",
+    val fcmToken: String = ""
 )
 
 data class PlannedMatch(
@@ -136,6 +139,11 @@ class UserViewModel : ViewModel() {
                         fetchAllUsers()
                         fetchAllTeams()
                         fetchSports()
+                        // Always refresh the FCM token on auto-login so Firestore stays up-to-date
+                        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                            saveFcmToken(email, token)
+                            Log.d("UserViewModel", "FCM token refreshed on auto-login")
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e("UserViewModel", "Auto-login failed: ${e.message}")
@@ -214,10 +222,11 @@ class UserViewModel : ViewModel() {
         isSigningIn = true
 
         val credentialManager = CredentialManager.create(context)
+        val serverClientId = context.getString(R.string.default_web_client_id)
 
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
-            .setServerClientId("591467195110-mta77nrn25lqj7gns75cvuf809b83100.apps.googleusercontent.com")
+            .setServerClientId(serverClientId)
             .setAutoSelectEnabled(false)
             .build()
 
@@ -229,11 +238,15 @@ class UserViewModel : ViewModel() {
             try {
                 val result = credentialManager.getCredential(context = context, request = request)
                 val credential = result.credential
-                if (credential is GoogleIdTokenCredential) {
-                    val firebaseCredential = GoogleAuthProvider.getCredential(credential.idToken, null)
+                if (
+                    credential is CustomCredential &&
+                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    val firebaseCredential = GoogleAuthProvider.getCredential(googleCredential.idToken, null)
                     val authResult = auth.signInWithCredential(firebaseCredential).await()
                     val firebaseUser = authResult.user ?: throw Exception("Firebase Auth failed")
-                    val email = firebaseUser.email ?: credential.id
+                    val email = firebaseUser.email ?: googleCredential.id
                     val userDoc = usersCollection.document(email).get().await()
                     if (userDoc.exists()) {
                         _userProfile.value = userDoc.toObject<UserProfile>()
@@ -253,8 +266,21 @@ class UserViewModel : ViewModel() {
                     fetchAllUsers()
                     fetchAllTeams()
                     fetchSports()
+                    // Save FCM token so this user can receive push notifications
+                    FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                        saveFcmToken(email, token)
+                    }
                     Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.e("UserViewModel", "Unexpected credential type: ${credential::class.java.simpleName}")
+                    Toast.makeText(context, "Google Sign-In unavailable on this device", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: NoCredentialException) {
+                Log.e("UserViewModel", "No Google account available for sign-in: ${e.message}")
+                Toast.makeText(context, "No Google account found on emulator", Toast.LENGTH_SHORT).show()
+            } catch (e: GetCredentialException) {
+                Log.e("UserViewModel", "Credential Manager error: ${e.message}")
+                Toast.makeText(context, "Google Sign-In failed: ${e.message}", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "SignIn Error: ${e.message}")
             } finally {
@@ -315,6 +341,19 @@ class UserViewModel : ViewModel() {
         }
     }
 
+    fun saveFcmToken(userEmail: String, token: String) {
+        viewModelScope.launch {
+            try {
+                usersCollection.document(userEmail)
+                    .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
+                    .await()
+                Log.d("UserViewModel", "FCM token saved for $userEmail")
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "FCM token save error: ${e.message}")
+            }
+        }
+    }
+
     fun signOut(context: Context) {
         val credentialManager = CredentialManager.create(context)
         viewModelScope.launch {
@@ -356,10 +395,39 @@ class UserViewModel : ViewModel() {
         }
     }
 
+    private fun normalizeInvitationState(match: PlannedMatch): PlannedMatch {
+        // For Team matches, always rebuild invitedPlayers from the current team rosters
+        // so that adding/changing teams immediately reflects in the invitation list.
+        val baseInvitedPlayers: List<String> = if (match.matchType == "Team") {
+            val myTeamMembers = _allTeams.value.find { it.name == match.myTeam }?.members ?: emptyList()
+            val opponentMembers = _allTeams.value.find { it.name == match.opponent }?.members ?: emptyList()
+            (myTeamMembers + opponentMembers).distinct()
+        } else {
+            match.invitedPlayers.distinct()
+        }
+
+        // Preserve existing answer statuses; new players get NO_ANSWER.
+        val mergedInvitations = baseInvitedPlayers.associateWith { playerId ->
+            match.playerInvitations[playerId] ?: InvitationStatus.NO_ANSWER.name
+        }
+
+        // Remove players from team-slot assignments if they are no longer invited.
+        val cleanedTeamA = match.teamAPlayers.filter { it in baseInvitedPlayers }
+        val cleanedTeamB = match.teamBPlayers.filter { it in baseInvitedPlayers }
+
+        return match.copy(
+            invitedPlayers = baseInvitedPlayers,
+            playerInvitations = mergedInvitations,
+            teamAPlayers = cleanedTeamA,
+            teamBPlayers = cleanedTeamB
+        )
+    }
+
     fun updateMatch(context: Context, match: PlannedMatch) {
         viewModelScope.launch {
             try {
-                matchesCollection.document(match.id).set(match).await()
+                val normalizedMatch = normalizeInvitationState(match)
+                matchesCollection.document(normalizedMatch.id).set(normalizedMatch).await()
                 Toast.makeText(context, "Match updated!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Update Match Error: ${e.message}")

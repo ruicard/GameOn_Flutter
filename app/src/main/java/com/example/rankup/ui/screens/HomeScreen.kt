@@ -145,6 +145,7 @@ fun HomeScreen(
                         item {
                             InvitationsPager(
                                 invitations = pendingInvitations,
+                                allUsers = allUsers,
                                 onClick = onMatchClick,
                                 onUpdateStatus = onUpdateStatus
                             )
@@ -237,6 +238,7 @@ fun UpcomingMatchCard(match: PlannedMatch, onClick: () -> Unit) {
 @Composable
 fun InvitationPendingCard(
     match: PlannedMatch,
+    invitedByName: String,
     onClick: () -> Unit,
     onUpdateStatus: (InvitationStatus) -> Unit
 ) {
@@ -281,9 +283,13 @@ fun InvitationPendingCard(
                             .clickable { selectedStatus = InvitationStatus.TENTATIVE },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.HelpOutline, contentDescription = "Tentative",
-                            tint = if (tentativeSelected) Color.White else Color(0xFFFFA000),
-                            modifier = Modifier.size(20.dp))
+                        Text(
+                            text = "?",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (tentativeSelected) Color.White else Color(0xFFFFA000)
+                            )
+                        )
                     }
                     // Decline
                     val declineSelected = selectedStatus == InvitationStatus.DECLINED
@@ -318,6 +324,29 @@ fun InvitationPendingCard(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Invited by $invitedByName",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(12.dp))
@@ -352,6 +381,7 @@ fun InvitationPendingCard(
 @Composable
 fun InvitationsPager(
     invitations: List<PlannedMatch>,
+    allUsers: List<UserProfile>,
     onClick: (PlannedMatch) -> Unit,
     onUpdateStatus: (PlannedMatch, InvitationStatus) -> Unit
 ) {
@@ -365,8 +395,14 @@ fun InvitationsPager(
             modifier = Modifier.fillMaxWidth()
         ) { page ->
             val match = invitations[page]
+            val invitedByName = allUsers.find { it.id == match.createdByUserId }?.let { user ->
+                user.name?.takeIf { it.isNotBlank() }
+                    ?: user.username.takeIf { it.isNotBlank() }
+                    ?: user.email
+            } ?: "Unknown player"
             InvitationPendingCard(
                 match = match,
+                invitedByName = invitedByName,
                 onClick = { onClick(match) },
                 onUpdateStatus = { status -> onUpdateStatus(match, status) }
             )

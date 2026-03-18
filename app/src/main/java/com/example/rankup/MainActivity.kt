@@ -231,7 +231,11 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
             ) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = { if (userProfile != null) UserProfileTopBar(userProfile!!) }
+                    topBar = {
+                        if (userProfile != null && currentDestination != AppDestinations.ACCOUNT) {
+                            UserProfileTopBar(userProfile!!)
+                        }
+                    }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
                         when (currentDestination) {

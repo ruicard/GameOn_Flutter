@@ -582,18 +582,23 @@ fun MatchDetailsScreen(
                 }
             }
 
-            if (match.matchType == "Team" && !isPast) {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-
-            TextButton(
-                onClick = onCancelMatch,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 24.dp),
-                colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
-            ) {
-                Text("Cancel Match", fontSize = 16.sp)
+            if (currentUser.id == match.createdByUserId) {
+                // Push the cancel button to the bottom only for Team matches that aren't past
+                if (match.matchType == "Team" && !isPast) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                TextButton(
+                    onClick = onCancelMatch,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, bottom = 24.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
+                ) {
+                    Text("Cancel Match", fontSize = 16.sp)
+                }
+            } else {
+                // No cancel button — just add a small bottom breathing room
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
 

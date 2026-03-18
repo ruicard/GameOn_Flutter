@@ -1,9 +1,17 @@
 package com.example.rankup.ui.screens
 
+import android.Manifest
+import android.location.Geocoder
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,11 +24,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.rankup.UserViewModel
 import com.example.rankup.UserProfile
 import com.example.rankup.data.AgeGroup
 import com.example.rankup.data.Gender
 import com.example.rankup.ui.theme.RankUpTheme
+import com.google.android.gms.location.LocationServices
+import java.util.Locale
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,19 +50,47 @@ fun AccountScreen(
         return
     }
 
+    val context = LocalContext.current
+
     var username by remember { mutableStateOf(userProfile.username) }
-    var city by remember { mutableStateOf(userProfile.city) }
-    
-    // Parse strings back to Enums for the UI logic
-    var gender by remember { 
-        mutableStateOf(try { Gender.valueOf(userProfile.gender) } catch (e: Exception) { Gender.UNKNOWN }) 
+    var city     by remember { mutableStateOf(userProfile.city) }
+
+    var gender by remember {
+        mutableStateOf(try { Gender.valueOf(userProfile.gender) } catch (_: Exception) { Gender.UNKNOWN })
     }
-    var ageGroup by remember { 
-        mutableStateOf(try { AgeGroup.valueOf(userProfile.ageGroup) } catch (e: Exception) { AgeGroup.SENIOR_18_45 }) 
+    var ageGroup by remember {
+        mutableStateOf(try { AgeGroup.valueOf(userProfile.ageGroup) } catch (_: Exception) { AgeGroup.SENIOR_18_45 })
     }
 
     var genderExpanded by remember { mutableStateOf(false) }
-    var ageExpanded by remember { mutableStateOf(false) }
+    var ageExpanded    by remember { mutableStateOf(false) }
+
+    // Location — same pattern as CreateTeamScreen
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val locationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                    loc?.let {
+                        val geocoder = Geocoder(context, Locale.getDefault())
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            geocoder.getFromLocation(it.latitude, it.longitude, 1) { addresses ->
+                                if (addresses.isNotEmpty()) city = addresses[0].locality ?: ""
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            val addresses = geocoder.getFromLocation(it.latitude, it.longitude, 1)
+                            if (!addresses.isNullOrEmpty()) city = addresses[0].locality ?: ""
+                        }
+                    }
+                }
+            } catch (e: SecurityException) {
+                Log.e("AccountScreen", "Location permission denied: ${e.message}")
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -62,30 +99,47 @@ fun AccountScreen(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AsyncImage(
-            model = userProfile.profilePictureUrl,
-            contentDescription = "Profile Picture",
-            modifier = Modifier
-                .size(100.dp)
-                .clip(CircleShape)
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Text(
-            text = userProfile.name ?: "User", 
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-        )
-        Text(text = userProfile.email, color = Color.Gray)
+        Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.height(32.dp))
+        // Profile picture
+        if (userProfile.profilePictureUrl != null) {
+            AsyncImage(
+                model = userProfile.profilePictureUrl,
+                contentDescription = "Profile Picture",
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AccountCircle,
+                contentDescription = "Profile Picture",
+                modifier = Modifier.size(80.dp),
+                tint = Color.Gray
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = userProfile.name ?: userProfile.username,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+        )
+
+        Text(
+            text = userProfile.email,
+            style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray, fontSize = 13.sp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Username Field
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
             label = { Text("Username") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -102,7 +156,8 @@ fun AccountScreen(
                 readOnly = true,
                 label = { Text("Gender") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth()
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
             )
             ExposedDropdownMenu(
                 expanded = genderExpanded,
@@ -111,10 +166,7 @@ fun AccountScreen(
                 Gender.entries.forEach { option ->
                     DropdownMenuItem(
                         text = { Text(option.name) },
-                        onClick = {
-                            gender = option
-                            genderExpanded = false
-                        }
+                        onClick = { gender = option; genderExpanded = false }
                     )
                 }
             }
@@ -134,7 +186,8 @@ fun AccountScreen(
                 readOnly = true,
                 label = { Text("Age Group") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = ageExpanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth()
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
             )
             ExposedDropdownMenu(
                 expanded = ageExpanded,
@@ -143,10 +196,7 @@ fun AccountScreen(
                 AgeGroup.entries.forEach { option ->
                     DropdownMenuItem(
                         text = { Text(option.name.replace("_", " ")) },
-                        onClick = {
-                            ageGroup = option
-                            ageExpanded = false
-                        }
+                        onClick = { ageGroup = option; ageExpanded = false }
                     )
                 }
             }
@@ -154,12 +204,20 @@ fun AccountScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // City Field
+        // City Field — tapping the location icon requests permission then auto-fills city
         OutlinedTextField(
             value = city,
             onValueChange = { city = it },
             label = { Text("City") },
-            modifier = Modifier.fillMaxWidth()
+            trailingIcon = {
+                IconButton(onClick = {
+                    locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                }) {
+                    Icon(Icons.Default.LocationOn, contentDescription = "Get current city")
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium
         )
 
         Spacer(modifier = Modifier.height(32.dp))

@@ -66,7 +66,9 @@ data class PlannedMatch(
     val status: String = MatchStatus.SCHEDULED.name,
     val teamAPlayers: List<String> = emptyList(),
     val teamBPlayers: List<String> = emptyList(),
-    val playerInvitations: Map<String, String> = emptyMap()
+    val playerInvitations: Map<String, String> = emptyMap(),
+    val resultsSavedByUserId: String = "",
+    val resultsConfirmed: Boolean = false
 )
 
 data class PlannedTeam(
@@ -443,6 +445,19 @@ class UserViewModel : ViewModel() {
                 Toast.makeText(context, "Match cancelled and deleted", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Cancel Match Error: ${e.message}")
+            }
+        }
+    }
+
+    fun confirmMatchResults(context: Context, matchId: String) {
+        viewModelScope.launch {
+            try {
+                matchesCollection.document(matchId)
+                    .update("resultsConfirmed", true)
+                    .await()
+                Toast.makeText(context, "Results confirmed!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Confirm Results Error: ${e.message}")
             }
         }
     }

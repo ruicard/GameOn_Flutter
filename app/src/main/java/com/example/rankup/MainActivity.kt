@@ -160,9 +160,10 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                 onSaveResults = { scoreMyTeam, scoreOpponent ->
                     userViewModel.updateMatch(context, selectedMatchForDetails.copy(
                         scoreMyTeam = scoreMyTeam,
-                        scoreOpponent = scoreOpponent
+                        scoreOpponent = scoreOpponent,
+                        resultsSavedByUserId = userProfile!!.id,
+                        resultsConfirmed = false
                     ))
-                    selectedMatchIdForDetails = null
                 },
                 onRandomizeTeams = { teamA, teamB ->
                     userViewModel.updateMatch(context, selectedMatchForDetails.copy(
@@ -173,6 +174,9 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                 onCancelMatch = {
                     userViewModel.cancelMatch(context, selectedMatchForDetails.id)
                     selectedMatchIdForDetails = null
+                },
+                onConfirmResults = {
+                    userViewModel.confirmMatchResults(context, selectedMatchForDetails.id)
                 },
                 onUpdateStatus = { playerId, newStatus ->
                     val updatedInvitations = selectedMatchForDetails.playerInvitations.toMutableMap()

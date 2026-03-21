@@ -178,7 +178,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                                 items(sortedPast) { match ->
-                                    PreviousMatchCard(match, allTeams, onClick = { onMatchClick(match) })
+                                    PreviousMatchCard(match, allTeams, currentUserId = userProfile?.id ?: "", onClick = { onMatchClick(match) })
                                 }
                             }
                         }
@@ -553,7 +553,7 @@ fun StatusIndicator(count: Int, label: String, color: Color, icon: ImageVector) 
 }
 
 @Composable
-fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick: () -> Unit) {
+fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, currentUserId: String = "", onClick: () -> Unit) {
     var formattedDate = match.dateTime
     try {
         val sdfInput = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -565,13 +565,43 @@ fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick:
     val myTeamObj = allTeams.find { it.name == match.myTeam }
     val opponentObj = allTeams.find { it.name == match.opponent }
 
+    // Determine if current user needs to confirm results
+    val pendingConfirmation = !missingResults && !match.resultsConfirmed
+    val canConfirmResults = if (pendingConfirmation && currentUserId.isNotEmpty()) {
+        val saver = match.resultsSavedByUserId
+        when (match.matchType) {
+            "Player" -> {
+                val saverInA = match.teamAPlayers.contains(saver)
+                val saverInB = match.teamBPlayers.contains(saver)
+                (saverInA && match.teamBPlayers.contains(currentUserId)) ||
+                (saverInB && match.teamAPlayers.contains(currentUserId))
+            }
+            else -> {
+                val myTeamMembers = myTeamObj?.members ?: emptyList()
+                val opponentMembers = opponentObj?.members ?: emptyList()
+                val saverInMyTeam = myTeamMembers.contains(saver)
+                val saverInOpponent = opponentMembers.contains(saver)
+                (saverInMyTeam && opponentMembers.contains(currentUserId)) ||
+                (saverInOpponent && myTeamMembers.contains(currentUserId))
+            }
+        }
+    } else false
+
+    val waitingForConfirmation = pendingConfirmation && !canConfirmResults && currentUserId.isNotEmpty()
+
+    val cardBorder = when {
+        missingResults || canConfirmResults -> BorderStroke(1.dp, Color(0xFFE91E63))
+        waitingForConfirmation -> BorderStroke(1.dp, Color(0xFFFF9800))
+        else -> null
+    }
+
     Column(modifier = Modifier.width(220.dp)) {
         Card(
             modifier = Modifier.fillMaxWidth().height(180.dp).clickable(onClick = onClick),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = if (missingResults) BorderStroke(1.dp, Color(0xFFE91E63)) else null
+            border = cardBorder
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -610,18 +640,23 @@ fun PreviousMatchCard(match: PlannedMatch, allTeams: List<PlannedTeam>, onClick:
         if (missingResults) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Error,
-                    contentDescription = null,
-                    tint = Color(0xFFE91E63),
-                    modifier = Modifier.size(16.dp)
-                )
+                Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Missing match results",
-                    color = Color.Black,
-                    fontSize = 12.sp
-                )
+                Text(text = "Missing match results", color = Color.Black, fontSize = 12.sp)
+            }
+        } else if (canConfirmResults) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
+                Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "Confirm match results", color = Color.Black, fontSize = 12.sp)
+            }
+        } else if (waitingForConfirmation) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
+                Icon(imageVector = Icons.Default.HourglassEmpty, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "Waiting result confirmation", color = Color(0xFFFF9800), fontSize = 12.sp)
             }
         }
     }

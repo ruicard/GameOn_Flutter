@@ -57,6 +57,7 @@ fun MatchDetailsScreen(
     onSaveResults: (Int?, Int?) -> Unit,
     onRandomizeTeams: (List<String>, List<String>) -> Unit,
     onCancelMatch: () -> Unit,
+    onConfirmResults: () -> Unit,
     onUpdateStatus: (String, InvitationStatus) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -66,8 +67,35 @@ fun MatchDetailsScreen(
     val isPast = matchDate?.before(now) ?: false
     val missingResults = match.scoreMyTeam == null || match.scoreOpponent == null
 
+    // Confirmation state
+    val pendingConfirmation = isPast && !missingResults && !match.resultsConfirmed
+    val canConfirmResults = if (pendingConfirmation) {
+        val saver = match.resultsSavedByUserId
+        when (match.matchType) {
+            "Player" -> {
+                val saverInA = match.teamAPlayers.contains(saver)
+                val saverInB = match.teamBPlayers.contains(saver)
+                (saverInA && match.teamBPlayers.contains(currentUser.id)) ||
+                (saverInB && match.teamAPlayers.contains(currentUser.id))
+            }
+            else -> {
+                val myTeamMembers = allTeams.find { it.name == match.myTeam }?.members ?: emptyList()
+                val opponentMembers = allTeams.find { it.name == match.opponent }?.members ?: emptyList()
+                val saverInMyTeam = myTeamMembers.contains(saver)
+                val saverInOpponent = opponentMembers.contains(saver)
+                (saverInMyTeam && opponentMembers.contains(currentUser.id)) ||
+                (saverInOpponent && myTeamMembers.contains(currentUser.id))
+            }
+        }
+    } else false
+
     var scoreMyTeamText by remember { mutableStateOf(match.scoreMyTeam?.toString() ?: "") }
     var scoreOpponentText by remember { mutableStateOf(match.scoreOpponent?.toString() ?: "") }
+
+    // State for reject-and-propose flow
+    var isProposingNewResult by remember { mutableStateOf(false) }
+    var proposedScoreA by remember { mutableStateOf("") }
+    var proposedScoreB by remember { mutableStateOf("") }
 
     var selectedTeamName by remember { mutableStateOf(match.myTeam) }
 
@@ -142,6 +170,33 @@ fun MatchDetailsScreen(
                 }
             }
 
+            if (pendingConfirmation && canConfirmResults) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(32.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE91E63))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = Color(0xFFE91E63),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Confirm match results",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.Black
+                        )
+                    }
+                }
+            }
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -192,6 +247,37 @@ fun MatchDetailsScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(text = match.location, style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val organizerName = allUsers.find { it.id == match.createdByUserId }?.let { user ->
+                        user.name?.takeIf { it.isNotBlank() }
+                            ?: user.username.takeIf { it.isNotBlank() }
+                            ?: user.email
+                    } ?: "Unknown player"
+
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Organized by $organizerName",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
                     }
                 }
             }
@@ -508,76 +594,285 @@ fun MatchDetailsScreen(
                         text = "Match Results",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
-                    /*Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Add results:",
-                        style = MaterialTheme.typography.bodyLarge
-                    )*/
                     Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            OutlinedTextField(
-                                value = scoreMyTeamText,
-                                onValueChange = { if (it.all { char -> char.isDigit() }) scoreMyTeamText = it },
-                                modifier = Modifier.width(80.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                placeholder = { Text("X", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+
+                    if (missingResults) {
+                        // ── Score entry form ─────────────────────────────────
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                OutlinedTextField(
+                                    value = scoreMyTeamText,
+                                    onValueChange = { if (it.all { char -> char.isDigit() }) scoreMyTeamText = it },
+                                    modifier = Modifier.width(80.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    placeholder = { Text("X", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = if (match.matchType == "Team") match.myTeam else "Team A",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
                             Text(
-                                text = if (match.matchType == "Team") match.myTeam else "Team A",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
+                                text = "VS",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                             )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                OutlinedTextField(
+                                    value = scoreOpponentText,
+                                    onValueChange = { if (it.all { char -> char.isDigit() }) scoreOpponentText = it },
+                                    modifier = Modifier.width(80.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    placeholder = { Text("X", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = if (match.matchType == "Team") match.opponent else "Team B",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
                         }
 
-                        Text(
-                            text = "VS",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        Spacer(modifier = Modifier.height(24.dp))
 
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            OutlinedTextField(
-                                value = scoreOpponentText,
-                                onValueChange = { if (it.all { char -> char.isDigit() }) scoreOpponentText = it },
-                                modifier = Modifier.width(80.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                placeholder = { Text("X", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = if (match.matchType == "Team") match.opponent else "Team B",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
+                        val hasUnallocated = unallocatedPlayerIds.isNotEmpty()
+                        val scoresEntered = scoreMyTeamText.isNotEmpty() && scoreOpponentText.isNotEmpty()
+                        val saveEnabled = !hasUnallocated && scoresEntered
+                        val saveButtonText = if (hasUnallocated) "Missing team Players allocation" else "Save Results"
+
+                        Button(
+                            onClick = {
+                                onSaveResults(scoreMyTeamText.toIntOrNull(), scoreOpponentText.toIntOrNull())
+                            },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(28.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                            enabled = saveEnabled
+                        ) {
+                            Text(saveButtonText, color = Color.White)
                         }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
 
-                    val hasUnallocated = unallocatedPlayerIds.isNotEmpty()
-                    val scoresEntered = scoreMyTeamText.isNotEmpty() && scoreOpponentText.isNotEmpty()
-                    val saveEnabled = !hasUnallocated && scoresEntered
-                    val saveButtonText = if (hasUnallocated) "Missing team Players allocation" else "Save Results"
+                    } else {
+                        // ── Read-only score display ───────────────────────────
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(80.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFBDBDBD)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = match.scoreMyTeam.toString(),
+                                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = if (match.matchType == "Team") match.myTeam else "Team A",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Text(
+                                text = "VS",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(80.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFBDBDBD)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = match.scoreOpponent.toString(),
+                                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = if (match.matchType == "Team") match.opponent else "Team B",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
 
-                    Button(
-                        onClick = {
-                            onSaveResults(scoreMyTeamText.toIntOrNull(), scoreOpponentText.toIntOrNull())
-                        },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(28.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                        enabled = saveEnabled
-                    ) {
-                        Text(saveButtonText, color = Color.White)
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        when {
+                            pendingConfirmation && canConfirmResults -> {
+                                if (isProposingNewResult) {
+                                    // ── Propose new result form ───────────────
+                                    Text(
+                                        text = "Propose new result",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            OutlinedTextField(
+                                                value = proposedScoreA,
+                                                onValueChange = { if (it.all { c -> c.isDigit() }) proposedScoreA = it },
+                                                modifier = Modifier.width(80.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                placeholder = { Text("X", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = if (match.matchType == "Team") match.myTeam else "Team A",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                        Text("VS", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            OutlinedTextField(
+                                                value = proposedScoreB,
+                                                onValueChange = { if (it.all { c -> c.isDigit() }) proposedScoreB = it },
+                                                modifier = Modifier.width(80.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                placeholder = { Text("X", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = if (match.matchType == "Team") match.opponent else "Team B",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(
+                                        onClick = {
+                                            onSaveResults(proposedScoreA.toIntOrNull(), proposedScoreB.toIntOrNull())
+                                            isProposingNewResult = false
+                                            proposedScoreA = ""
+                                            proposedScoreB = ""
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        shape = RoundedCornerShape(28.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                                        enabled = proposedScoreA.isNotEmpty() && proposedScoreB.isNotEmpty()
+                                    ) {
+                                        Text("Save New Result", color = Color.White)
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(
+                                        onClick = {
+                                            isProposingNewResult = false
+                                            proposedScoreA = ""
+                                            proposedScoreB = ""
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Cancel")
+                                    }
+                                } else {
+                                    // ── Confirm / Reject choice ───────────────
+                                    Button(
+                                        onClick = onConfirmResults,
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        shape = RoundedCornerShape(28.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Confirm Results", color = Color.White)
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    OutlinedButton(
+                                        onClick = { isProposingNewResult = true },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        shape = RoundedCornerShape(28.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFE91E63)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE91E63))
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Reject & propose new result")
+                                    }
+                                }
+                            }
+                            pendingConfirmation -> {
+                                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    Surface(
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.HourglassEmpty,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Awaiting opponent confirmation",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                // resultsConfirmed
+                                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    Surface(
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = Color(0xFF00897B).copy(alpha = 0.12f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = Color(0xFF00897B),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Results confirmed",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = Color(0xFF00897B)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -837,6 +1132,7 @@ fun MatchDetailsScreenPreview() {
             onSaveResults = { _, _ -> },
             onRandomizeTeams = { _, _ -> },
             onCancelMatch = {},
+            onConfirmResults = {},
             onUpdateStatus = { _, _ -> }
         )
     }

@@ -58,6 +58,7 @@ fun MatchDetailsScreen(
     onRandomizeTeams: (List<String>, List<String>) -> Unit,
     onCancelMatch: () -> Unit,
     onConfirmResults: () -> Unit,
+    onRematch: () -> Unit,
     onUpdateStatus: (String, InvitationStatus) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -871,6 +872,17 @@ fun MatchDetailsScreen(
                                         }
                                     }
                                 }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = onRematch,
+                                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                                    shape = RoundedCornerShape(28.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5))
+                                ) {
+                                    Icon(Icons.Default.Replay, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Rematch", color = Color.White)
+                                }
                             }
                         }
                     }
@@ -1133,6 +1145,7 @@ fun MatchDetailsScreenPreview() {
             onRandomizeTeams = { _, _ -> },
             onCancelMatch = {},
             onConfirmResults = {},
+            onRematch = {},
             onUpdateStatus = { _, _ -> }
         )
     }

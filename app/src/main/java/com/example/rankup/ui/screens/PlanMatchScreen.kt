@@ -42,29 +42,31 @@ fun PlanMatchScreen(
     allTeams: List<PlannedTeam>,
     allUsers: List<UserProfile>,
     onSave: (PlannedMatch) -> Unit,
-    onBack: () -> Unit, 
-    onCancelToHome: () -> Unit, 
+    onBack: () -> Unit,
+    onCancelToHome: () -> Unit,
+    initialMatch: PlannedMatch? = null,
     modifier: Modifier = Modifier
 ) {
-    var step by remember { mutableIntStateOf(1) }
+    // Start at step 2 for rematches (modality + type already known)
+    var step by remember { mutableIntStateOf(if (initialMatch != null) 2 else 1) }
 
-    // Step 1 states
+    // Step 1 states — pre-filled from initialMatch when rematching
     var modalityExpanded by remember { mutableStateOf(false) }
-    var selectedModalityName by remember { mutableStateOf("") }
+    var selectedModalityName by remember { mutableStateOf(initialMatch?.modality ?: "") }
     val selectedSportModel = availableSports.find { it.name == selectedModalityName }
 
     var matchTypeExpanded by remember { mutableStateOf(false) }
-    var selectedMatchType by remember { mutableStateOf("") }
+    var selectedMatchType by remember { mutableStateOf(initialMatch?.matchType ?: "") }
     val matchTypes = listOf("Player", "Team")
 
-    // Step 2 states
+    // Step 2 states — date is always empty (user must pick new date)
     var selectedDateTime by remember { mutableStateOf("") }
-    var whereText by remember { mutableStateOf("") }
-    
-    // Team mode states
+    var whereText by remember { mutableStateOf(initialMatch?.location ?: "") }
+
+    // Team mode states — pre-filled from initialMatch
     var teamExpanded by remember { mutableStateOf(false) }
-    var selectedTeam by remember { mutableStateOf("") }
-    var opponentText by remember { mutableStateOf("") }
+    var selectedTeam by remember { mutableStateOf(initialMatch?.myTeam ?: "") }
+    var opponentText by remember { mutableStateOf(initialMatch?.opponent ?: "") }
     var opponentExpanded by remember { mutableStateOf(false) }
 
     // Filter user teams by selected modality
@@ -81,6 +83,17 @@ fun PlanMatchScreen(
     var playerSearchText by remember { mutableStateOf("") }
     var playerSearchExpanded by remember { mutableStateOf(false) }
     val invitedPlayers = remember { mutableStateListOf<UserProfile>() }
+
+    // Pre-fill invited players for rematch (Player-type matches)
+    LaunchedEffect(initialMatch, allUsers) {
+        if (initialMatch != null && initialMatch.matchType == "Player"
+            && invitedPlayers.isEmpty() && allUsers.isNotEmpty()
+        ) {
+            val players = allUsers.filter { initialMatch.playerInvitations.containsKey(it.id) }
+            invitedPlayers.addAll(players)
+        }
+    }
+
     val filteredPlayers = allUsers.filter { 
         it.name?.contains(playerSearchText, ignoreCase = true) == true && 
         invitedPlayers.none { p -> p.id == it.id }
@@ -112,7 +125,7 @@ fun PlanMatchScreen(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Plan Match",
+                    text = if (initialMatch != null) "Rematch" else "Plan Match",
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp)
                 )
             }

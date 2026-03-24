@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
 fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
     var showPlanMatch by rememberSaveable { mutableStateOf(false) }
+    var rematchMatchId by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreateTeam by rememberSaveable { mutableStateOf(false) }
     var selectedMatchIdForDetails by rememberSaveable { mutableStateOf<String?>(null) }
     var matchToEditId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -87,18 +88,27 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
     Box(modifier = Modifier.fillMaxSize()) {
         if (isInitializing) {
             Box(modifier = Modifier.fillMaxSize())
-        } else if (showPlanMatch) {
+        } else if (showPlanMatch || rematchMatchId != null) {
+            val rematchMatch = rematchMatchId?.let { id -> plannedMatches.find { it.id == id } }
             PlanMatchScreen(
                 availableSports = availableSports,
                 userTeams = userTeams,
                 allTeams = allTeams,
                 allUsers = allUsers,
+                initialMatch = rematchMatch,
                 onSave = { match ->
                     userViewModel.addMatch(context, match)
                     showPlanMatch = false
+                    rematchMatchId = null
                 },
-                onBack = { showPlanMatch = false },
-                onCancelToHome = { showPlanMatch = false }
+                onBack = {
+                    showPlanMatch = false
+                    rematchMatchId = null
+                },
+                onCancelToHome = {
+                    showPlanMatch = false
+                    rematchMatchId = null
+                }
             )
         } else if (showCreateTeam && userProfile != null) {
             CreateTeamScreen(
@@ -177,6 +187,10 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                 },
                 onConfirmResults = {
                     userViewModel.confirmMatchResults(context, selectedMatchForDetails.id)
+                },
+                onRematch = {
+                    rematchMatchId = selectedMatchForDetails.id
+                    selectedMatchIdForDetails = null
                 },
                 onUpdateStatus = { playerId, newStatus ->
                     val updatedInvitations = selectedMatchForDetails.playerInvitations.toMutableMap()

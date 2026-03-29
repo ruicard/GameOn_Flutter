@@ -17,6 +17,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.toObject
@@ -48,7 +49,8 @@ data class UserProfile(
     val gender: String = Gender.UNKNOWN.name,
     val ageGroup: String = AgeGroup.SENIOR_18_45.name,
     val city: String = "",
-    val fcmToken: String = ""
+    val fcmToken: String = "",
+    val rankPoints: Int = 100
 )
 
 data class PlannedMatch(
@@ -68,7 +70,8 @@ data class PlannedMatch(
     val teamBPlayers: List<String> = emptyList(),
     val playerInvitations: Map<String, String> = emptyMap(),
     val resultsSavedByUserId: String = "",
-    val resultsConfirmed: Boolean = false
+    val resultsConfirmed: Boolean = false,
+    val pointsDistributed: Boolean = false
 )
 
 data class PlannedTeam(
@@ -100,6 +103,9 @@ class UserViewModel : ViewModel() {
     private val matchesCollection = db.collection("matches")
     private val teamsCollection = db.collection("teams")
     private val sportsCollection = db.collection("sports")
+
+    // Prevents the historical backfill from running more than once per session
+    private var backfillDone = false
 
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
@@ -251,14 +257,22 @@ class UserViewModel : ViewModel() {
                     val email = firebaseUser.email ?: googleCredential.id
                     val userDoc = usersCollection.document(email).get().await()
                     if (userDoc.exists()) {
-                        _userProfile.value = userDoc.toObject<UserProfile>()
+                        val profile = userDoc.toObject<UserProfile>()!!
+                        // Migrate existing users: initialize rankPoints if field was missing (reads as 0)
+                        if (profile.rankPoints == 0) {
+                            usersCollection.document(email).update("rankPoints", 100).await()
+                            _userProfile.value = profile.copy(rankPoints = 100)
+                        } else {
+                            _userProfile.value = profile
+                        }
                     } else {
                         val newProfile = UserProfile(
                             id = firebaseUser.uid,
                             name = firebaseUser.displayName,
                             email = email,
                             profilePictureUrl = firebaseUser.photoUrl?.toString(),
-                            username = firebaseUser.displayName ?: ""
+                            username = firebaseUser.displayName ?: "",
+                            rankPoints = 100
                         )
                         usersCollection.document(email).set(newProfile).await()
                         _userProfile.value = newProfile
@@ -273,6 +287,8 @@ class UserViewModel : ViewModel() {
                         saveFcmToken(email, token)
                     }
                     Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
+                    // Backfill rank points for any confirmed match that predates this feature
+                    viewModelScope.launch { backfillMatchPoints() }
                 } else {
                     Log.e("UserViewModel", "Unexpected credential type: ${credential::class.java.simpleName}")
                     Toast.makeText(context, "Google Sign-In unavailable on this device", Toast.LENGTH_SHORT).show()
@@ -364,6 +380,7 @@ class UserViewModel : ViewModel() {
             _userProfile.value = null
             _plannedMatches.value = emptyList()
             _userTeams.value = emptyList()
+            backfillDone = false
         }
     }
 
@@ -455,10 +472,149 @@ class UserViewModel : ViewModel() {
                 matchesCollection.document(matchId)
                     .update("resultsConfirmed", true)
                     .await()
+                // Distribute rank points to all players
+                val match = _plannedMatches.value.find { it.id == matchId }
+                if (match != null) {
+                    distributeMatchPoints(match.copy(resultsConfirmed = true))
+                }
                 Toast.makeText(context, "Results confirmed!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Confirm Results Error: ${e.message}")
             }
+        }
+    }
+
+    private suspend fun distributeMatchPoints(match: PlannedMatch, refreshAfter: Boolean = true) {
+        if (match.pointsDistributed) return
+        val rawMyTeam  = match.scoreMyTeam  ?: return
+        val rawOpponent = match.scoreOpponent ?: return
+
+        val saver      = match.resultsSavedByUserId
+        val usersById  = _allUsers.value.associateBy { it.id }
+
+        val groupA: List<String>
+        val groupB: List<String>
+        val scoreGroupA: Int
+        val scoreGroupB: Int
+
+        if (match.matchType == "Team") {
+            val myTeamMembers = _allTeams.value.find { it.name == match.myTeam }?.members ?: emptyList()
+            val oppMembers    = _allTeams.value.find { it.name == match.opponent }?.members ?: emptyList()
+            if (myTeamMembers.contains(saver)) {
+                groupA = myTeamMembers;  groupB = oppMembers
+            } else {
+                groupA = oppMembers;  groupB = myTeamMembers
+            }
+            scoreGroupA = rawMyTeam;  scoreGroupB = rawOpponent
+        } else {
+            val a = match.teamAPlayers;  val b = match.teamBPlayers
+            if (a.contains(saver)) {
+                groupA = a;  groupB = b
+                scoreGroupA = rawMyTeam;  scoreGroupB = rawOpponent
+            } else {
+                groupA = b;  groupB = a
+                scoreGroupA = rawMyTeam;  scoreGroupB = rawOpponent
+            }
+        }
+
+        fun delta(myScore: Int, oppScore: Int): Long = when {
+            myScore > oppScore  -> 3L
+            myScore == oppScore -> 2L
+            else                -> -1L
+        }
+
+        val deltaA = delta(scoreGroupA, scoreGroupB)
+        val deltaB = delta(scoreGroupB, scoreGroupA)
+
+        val batch = db.batch()
+
+        groupA.distinct().forEach { playerId ->
+            val user = usersById[playerId] ?: return@forEach
+            batch.update(usersCollection.document(user.email), "rankPoints", FieldValue.increment(deltaA))
+        }
+        groupB.distinct().forEach { playerId ->
+            val user = usersById[playerId] ?: return@forEach
+            batch.update(usersCollection.document(user.email), "rankPoints", FieldValue.increment(deltaB))
+        }
+
+        val allPlayed  = (groupA + groupB).toSet()
+        val allInvited = (match.invitedPlayers + match.playerInvitations.keys)
+            .filter { it.isNotBlank() }.toSet()
+        (allInvited - allPlayed).forEach { playerId ->
+            val user = usersById[playerId] ?: return@forEach
+            batch.update(usersCollection.document(user.email), "rankPoints", FieldValue.increment(-3L))
+        }
+
+        batch.update(matchesCollection.document(match.id), "pointsDistributed", true)
+        batch.commit().await()
+
+        if (refreshAfter) {
+            val currentUser = _userProfile.value
+            if (currentUser != null) {
+                val refreshed = usersCollection.document(currentUser.email).get().await()
+                    .toObject<UserProfile>()
+                if (refreshed != null) _userProfile.value = refreshed
+            }
+            fetchAllUsers()
+        }
+    }
+
+    /**
+     * Backfills rank points for ALL confirmed matches that were played before the
+     * pointsDistributed flag was introduced (pointsDistributed == false).
+     *
+     * Runs once per sign-in session. Each match is processed at most once
+     * (guarded by the pointsDistributed flag on the Firestore document).
+     */
+    private suspend fun backfillMatchPoints() {
+        if (backfillDone) return
+        backfillDone = true
+        try {
+            // Query confirmed matches; filter pointsDistributed in memory to avoid
+            // a composite index requirement in Firestore.
+            val unprocessed = matchesCollection
+                .whereEqualTo("resultsConfirmed", true)
+                .get()
+                .await()
+                .documents
+                .mapNotNull { it.toObject<PlannedMatch>() }
+                .filter { !it.pointsDistributed }
+
+            if (unprocessed.isEmpty()) {
+                Log.d("UserViewModel", "Backfill: no unprocessed matches found")
+                return
+            }
+
+            Log.d("UserViewModel", "Backfill: processing ${unprocessed.size} confirmed match(es)")
+
+            // Ensure _allUsers and _allTeams are populated before looping
+            if (_allUsers.value.isEmpty()) {
+                val snap = usersCollection.get().await()
+                _allUsers.value = snap.documents.mapNotNull { it.toObject<UserProfile>() }
+            }
+            if (_allTeams.value.isEmpty()) {
+                val snap = teamsCollection.get().await()
+                _allTeams.value = snap.documents.mapNotNull { it.toObject<PlannedTeam>() }
+            }
+
+            // Process each match without per-match profile refreshes (perf optimisation)
+            unprocessed.forEach { match ->
+                distributeMatchPoints(match, refreshAfter = false)
+            }
+
+            // Single refresh at the end so the Account Screen shows the updated points
+            val currentUser = _userProfile.value
+            if (currentUser != null) {
+                val refreshed = usersCollection.document(currentUser.email).get().await()
+                    .toObject<UserProfile>()
+                if (refreshed != null) _userProfile.value = refreshed
+            }
+            fetchAllUsers()
+
+            Log.d("UserViewModel", "Backfill: complete")
+        } catch (e: Exception) {
+            Log.e("UserViewModel", "Backfill error: ${e.message}")
+            backfillDone = false   // Allow retry on next sign-in
         }
     }
 

@@ -67,6 +67,9 @@ fun MatchDetailsScreen(
     val matchDate = try { sdf.parse(match.dateTime) } catch (e: Exception) { null }
     val isPast = matchDate?.before(now) ?: false
     val missingResults = match.scoreMyTeam == null || match.scoreOpponent == null
+    // Once the result is confirmed, player status and team composition are locked
+    // to prevent inconsistencies with the rank points already awarded.
+    val isLocked = match.resultsConfirmed
 
     // Confirmation state
     val pendingConfirmation = isPast && !missingResults && !match.resultsConfirmed
@@ -295,6 +298,29 @@ fun MatchDetailsScreen(
                 emptyList() // Team-type matches have no manual allocation
             }
 
+            // Lock banner — shown once the result is confirmed
+            if (isLocked) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = Color(0xFF757575),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Result confirmed — status and team composition are locked.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF757575)
+                    )
+                }
+            }
+
             if (match.matchType == "Team") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -366,7 +392,8 @@ fun MatchDetailsScreen(
                             status = effectiveStatus,
                             currentUserId = currentUser.id,
                             onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
-                            isPast = isPast
+                            isPast = isPast,
+                            isLocked = isLocked
                         )
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                     }
@@ -434,7 +461,8 @@ fun MatchDetailsScreen(
                                             onRandomizeTeams(newTeamA, newTeamB)
                                         }
                                         draggingPlayerId = null
-                                    }
+                                    },
+                                    isLocked = isLocked
                                 ) {
                                     val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
                                     val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
@@ -448,7 +476,8 @@ fun MatchDetailsScreen(
                                         currentUserId = currentUser.id,
                                         onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
                                         showDragHandle = true,
-                                        isPast = isPast
+                                        isPast = isPast,
+                                        isLocked = isLocked
                                     )
                                     HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                                 }
@@ -486,7 +515,8 @@ fun MatchDetailsScreen(
                                             onRandomizeTeams(newTeamA, newTeamB)
                                         }
                                         draggingPlayerId = null
-                                    }
+                                    },
+                                    isLocked = isLocked
                                 ) {
                                     val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
                                     val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
@@ -500,7 +530,8 @@ fun MatchDetailsScreen(
                                         currentUserId = currentUser.id,
                                         onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
                                         showDragHandle = true,
-                                        isPast = isPast
+                                        isPast = isPast,
+                                        isLocked = isLocked
                                     )
                                     HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                                 }
@@ -546,7 +577,8 @@ fun MatchDetailsScreen(
                                                 onRandomizeTeams(newTeamA, newTeamB)
                                             }
                                             draggingPlayerId = null
-                                        }
+                                        },
+                                        isLocked = isLocked
                                     ) {
                                         val originalStatus = match.playerInvitations[player.id] ?: InvitationStatus.NO_ANSWER.name
                                         val effectiveStatus = if (isPast && (originalStatus == InvitationStatus.NO_ANSWER.name || originalStatus == InvitationStatus.TENTATIVE.name)) {
@@ -560,7 +592,8 @@ fun MatchDetailsScreen(
                                             currentUserId = currentUser.id,
                                             onUpdateStatus = { newStatus -> onUpdateStatus(player.id, newStatus) },
                                             showDragHandle = true,
-                                            isPast = isPast
+                                            isPast = isPast,
+                                            isLocked = isLocked
                                         )
                                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                                     }
@@ -569,7 +602,7 @@ fun MatchDetailsScreen(
                         }
                     }
                     
-                    if (!isPast && match.invitedPlayers.size >= 2) {
+                    if (!isPast && !isLocked && match.invitedPlayers.size >= 2) {
                         item {
                             Spacer(modifier = Modifier.height(24.dp))
                             Button(
@@ -958,26 +991,29 @@ private fun DraggablePlayerWrapper(
     onDragStart: (Offset) -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
+    isLocked: Boolean = false,
     content: @Composable () -> Unit
 ) {
     var itemPosition by remember { mutableStateOf(Offset.Zero) }
-    
+
+    val dragModifier = if (isLocked) Modifier else Modifier.pointerInput(player.id) {
+        detectDragGesturesAfterLongPress(
+            onDragStart = { offset -> onDragStart(itemPosition + offset) },
+            onDrag = { change, dragAmount ->
+                change.consume()
+                onDrag(dragAmount)
+            },
+            onDragEnd = onDragEnd,
+            onDragCancel = onDragEnd
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { itemPosition = it.positionInWindow() }
             .alpha(if (isDragging) 0.3f else 1.0f)
-            .pointerInput(player.id) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { offset -> onDragStart(itemPosition + offset) },
-                    onDrag = { change, dragAmount -> 
-                        change.consume()
-                        onDrag(dragAmount) 
-                    },
-                    onDragEnd = onDragEnd,
-                    onDragCancel = onDragEnd
-                )
-            }
+            .then(dragModifier)
     ) {
         content()
     }
@@ -990,9 +1026,12 @@ private fun PlayerInvitationItem(
     currentUserId: String,
     onUpdateStatus: (InvitationStatus) -> Unit,
     showDragHandle: Boolean = false,
-    isPast: Boolean = false
+    isPast: Boolean = false,
+    isLocked: Boolean = false
 ) {
     var isEditing by remember { mutableStateOf(false) }
+    // Editing is never allowed when the result is confirmed
+    if (isLocked) isEditing = false
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1067,7 +1106,7 @@ private fun PlayerInvitationItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (isMe && !isPast) {
+                if (isMe && !isPast && !isLocked) {
                     Text(
                         text = "Edit Status",
                         style = MaterialTheme.typography.bodyMedium.copy(
@@ -1090,7 +1129,7 @@ private fun PlayerInvitationItem(
                                 .size(24.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFBDBDBD))
-                                .clickable { isEditing = true },
+                                .then(if (!isLocked) Modifier.clickable { isEditing = true } else Modifier),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -1115,7 +1154,7 @@ private fun PlayerInvitationItem(
                         tint = color,
                         modifier = Modifier
                             .size(28.dp)
-                            .clickable { isEditing = true }
+                            .then(if (!isLocked) Modifier.clickable { isEditing = true } else Modifier)
                     )
                 }
             }

@@ -285,7 +285,9 @@ fun RankUpApp(userViewModel: UserViewModel = viewModel()) {
                                     userViewModel.updateProfile(context, username, gender, age, city)
                                 },
                                 onSignInClick = { userViewModel.signIn(context) },
-                                onSignOutClick = { userViewModel.signOut(context) }
+                                onSignOutClick = { userViewModel.signOut(context) },
+                                plannedMatches = plannedMatches,
+                                allTeams = allTeams
                             )
                             AppDestinations.TEAMS -> TeamsScreen(
                                 teams = userTeams,

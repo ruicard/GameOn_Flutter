@@ -23,12 +23,16 @@ import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.toObject
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -50,7 +54,11 @@ data class UserProfile(
     val ageGroup: String = AgeGroup.SENIOR_18_45.name,
     val city: String = "",
     val fcmToken: String = "",
-    val rankPoints: Int = 100
+    // Glicko-2 rating fields — updated by the Cloud Function after each confirmed match
+    // New players start at 1500 / 350 / 0.06 (standard Glicko-2 defaults)
+    val glickoRating: Double = 1500.0,
+    val glickoRd: Double = 350.0,
+    val glickoVol: Double = 0.06
 )
 
 data class PlannedMatch(
@@ -71,7 +79,7 @@ data class PlannedMatch(
     val playerInvitations: Map<String, String> = emptyMap(),
     val resultsSavedByUserId: String = "",
     val resultsConfirmed: Boolean = false,
-    val pointsDistributed: Boolean = false
+    val glicko2Distributed: Boolean = false  // set to true by Cloud Function after Glicko-2 update
 )
 
 data class PlannedTeam(
@@ -144,6 +152,7 @@ class UserViewModel : ViewModel() {
                         _userProfile.value = userDoc.toObject<UserProfile>()
                         listenToMatches()
                         listenToTeams()
+                        listenToUserProfile(email)   // real-time Glicko-2 updates on auto-login
                         fetchAllUsers()
                         fetchAllTeams()
                         fetchSports()
@@ -152,6 +161,8 @@ class UserViewModel : ViewModel() {
                             saveFcmToken(email, token)
                             Log.d("UserViewModel", "FCM token refreshed on auto-login")
                         }
+                        // Backfill Glicko-2 for any confirmed matches not yet processed
+                        viewModelScope.launch { backfillGlicko2() }
                     }
                 } catch (e: Exception) {
                     Log.e("UserViewModel", "Auto-login failed: ${e.message}")
@@ -258,10 +269,14 @@ class UserViewModel : ViewModel() {
                     val userDoc = usersCollection.document(email).get().await()
                     if (userDoc.exists()) {
                         val profile = userDoc.toObject<UserProfile>()!!
-                        // Migrate existing users: initialize rankPoints if field was missing (reads as 0)
-                        if (profile.rankPoints == 0) {
-                            usersCollection.document(email).update("rankPoints", 100).await()
-                            _userProfile.value = profile.copy(rankPoints = 100)
+                        // Migrate existing users whose glickoRating was never written (reads as 0.0)
+                        if (profile.glickoRating == 0.0) {
+                            usersCollection.document(email).update(
+                                "glickoRating", 1500.0,
+                                "glickoRd",     350.0,
+                                "glickoVol",    0.06
+                            ).await()
+                            _userProfile.value = profile.copy(glickoRating = 1500.0, glickoRd = 350.0, glickoVol = 0.06)
                         } else {
                             _userProfile.value = profile
                         }
@@ -272,23 +287,26 @@ class UserViewModel : ViewModel() {
                             email = email,
                             profilePictureUrl = firebaseUser.photoUrl?.toString(),
                             username = firebaseUser.displayName ?: "",
-                            rankPoints = 100
+                            // Glicko-2 defaults — 1500 / 350 / 0.06
+                            glickoRating = 1500.0,
+                            glickoRd     = 350.0,
+                            glickoVol    = 0.06
                         )
                         usersCollection.document(email).set(newProfile).await()
                         _userProfile.value = newProfile
                     }
                     listenToMatches()
                     listenToTeams()
+                    listenToUserProfile(email)   // real-time updates so Glicko-2 changes appear instantly
                     fetchAllUsers()
                     fetchAllTeams()
                     fetchSports()
-                    // Save FCM token so this user can receive push notifications
                     FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                         saveFcmToken(email, token)
                     }
                     Toast.makeText(context, "Welcome ${_userProfile.value?.name}", Toast.LENGTH_SHORT).show()
-                    // Backfill rank points for any confirmed match that predates this feature
-                    viewModelScope.launch { backfillMatchPoints() }
+                    // Backfill Glicko-2 for any confirmed match processed before this feature
+                    viewModelScope.launch { backfillGlicko2() }
                 } else {
                     Log.e("UserViewModel", "Unexpected credential type: ${credential::class.java.simpleName}")
                     Toast.makeText(context, "Google Sign-In unavailable on this device", Toast.LENGTH_SHORT).show()
@@ -469,152 +487,86 @@ class UserViewModel : ViewModel() {
     fun confirmMatchResults(context: Context, matchId: String) {
         viewModelScope.launch {
             try {
+                // Setting resultsConfirmed = true triggers the Cloud Function
+                // processGlicko2OnResultConfirmed which updates every player's Glicko-2 rating.
                 matchesCollection.document(matchId)
                     .update("resultsConfirmed", true)
                     .await()
-                // Distribute rank points to all players
-                val match = _plannedMatches.value.find { it.id == matchId }
-                if (match != null) {
-                    distributeMatchPoints(match.copy(resultsConfirmed = true))
-                }
                 Toast.makeText(context, "Results confirmed!", Toast.LENGTH_SHORT).show()
+                // listenToUserProfile already keeps _userProfile in sync — no manual refresh needed.
             } catch (e: Exception) {
                 Log.e("UserViewModel", "Confirm Results Error: ${e.message}")
             }
         }
     }
 
-    private suspend fun distributeMatchPoints(match: PlannedMatch, refreshAfter: Boolean = true) {
-        if (match.pointsDistributed) return
-        val rawMyTeam  = match.scoreMyTeam  ?: return
-        val rawOpponent = match.scoreOpponent ?: return
-
-        val saver      = match.resultsSavedByUserId
-        val usersById  = _allUsers.value.associateBy { it.id }
-
-        val groupA: List<String>
-        val groupB: List<String>
-        val scoreGroupA: Int
-        val scoreGroupB: Int
-
-        if (match.matchType == "Team") {
-            val myTeamMembers = _allTeams.value.find { it.name == match.myTeam }?.members ?: emptyList()
-            val oppMembers    = _allTeams.value.find { it.name == match.opponent }?.members ?: emptyList()
-            if (myTeamMembers.contains(saver)) {
-                groupA = myTeamMembers;  groupB = oppMembers
-            } else {
-                groupA = oppMembers;  groupB = myTeamMembers
+    /**
+     * Real-time listener on the current user's Firestore document.
+     * Keeps _userProfile (and therefore the Account Screen Glicko-2 card) up-to-date
+     * the moment the Cloud Function writes back updated glickoRating / glickoRd / glickoVol.
+     */
+    private fun listenToUserProfile(email: String) {
+        usersCollection.document(email).addSnapshotListener { snapshot, e ->
+            if (e != null) { Log.w("UserViewModel", "listenToUserProfile error: ${e.message}"); return@addSnapshotListener }
+            if (snapshot != null && snapshot.exists()) {
+                val updated = snapshot.toObject<UserProfile>()
+                if (updated != null) _userProfile.value = updated
             }
-            scoreGroupA = rawMyTeam;  scoreGroupB = rawOpponent
-        } else {
-            val a = match.teamAPlayers;  val b = match.teamBPlayers
-            if (a.contains(saver)) {
-                groupA = a;  groupB = b
-                scoreGroupA = rawMyTeam;  scoreGroupB = rawOpponent
-            } else {
-                groupA = b;  groupB = a
-                scoreGroupA = rawMyTeam;  scoreGroupB = rawOpponent
-            }
-        }
-
-        fun delta(myScore: Int, oppScore: Int): Long = when {
-            myScore > oppScore  -> 3L
-            myScore == oppScore -> 2L
-            else                -> -1L
-        }
-
-        val deltaA = delta(scoreGroupA, scoreGroupB)
-        val deltaB = delta(scoreGroupB, scoreGroupA)
-
-        val batch = db.batch()
-
-        groupA.distinct().forEach { playerId ->
-            val user = usersById[playerId] ?: return@forEach
-            batch.update(usersCollection.document(user.email), "rankPoints", FieldValue.increment(deltaA))
-        }
-        groupB.distinct().forEach { playerId ->
-            val user = usersById[playerId] ?: return@forEach
-            batch.update(usersCollection.document(user.email), "rankPoints", FieldValue.increment(deltaB))
-        }
-
-        val allPlayed  = (groupA + groupB).toSet()
-        val allInvited = (match.invitedPlayers + match.playerInvitations.keys)
-            .filter { it.isNotBlank() }.toSet()
-        (allInvited - allPlayed).forEach { playerId ->
-            val user = usersById[playerId] ?: return@forEach
-            batch.update(usersCollection.document(user.email), "rankPoints", FieldValue.increment(-3L))
-        }
-
-        batch.update(matchesCollection.document(match.id), "pointsDistributed", true)
-        batch.commit().await()
-
-        if (refreshAfter) {
-            val currentUser = _userProfile.value
-            if (currentUser != null) {
-                val refreshed = usersCollection.document(currentUser.email).get().await()
-                    .toObject<UserProfile>()
-                if (refreshed != null) _userProfile.value = refreshed
-            }
-            fetchAllUsers()
         }
     }
 
     /**
-     * Backfills rank points for ALL confirmed matches that were played before the
-     * pointsDistributed flag was introduced (pointsDistributed == false).
-     *
-     * Runs once per sign-in session. Each match is processed at most once
-     * (guarded by the pointsDistributed flag on the Firestore document).
+     * Backfills Glicko-2 for all confirmed matches that pre-date the Cloud Function deployment
+     * (glicko2Distributed == false).  Calls the glicko2ProcessMatch REST endpoint for each one.
+     * Runs once per sign-in session.
      */
-    private suspend fun backfillMatchPoints() {
+    private suspend fun backfillGlicko2() {
         if (backfillDone) return
         backfillDone = true
         try {
-            // Query confirmed matches; filter pointsDistributed in memory to avoid
-            // a composite index requirement in Firestore.
             val unprocessed = matchesCollection
                 .whereEqualTo("resultsConfirmed", true)
-                .get()
-                .await()
+                .get().await()
                 .documents
                 .mapNotNull { it.toObject<PlannedMatch>() }
-                .filter { !it.pointsDistributed }
+                .filter { !it.glicko2Distributed }
 
             if (unprocessed.isEmpty()) {
-                Log.d("UserViewModel", "Backfill: no unprocessed matches found")
+                Log.d("UserViewModel", "Glicko-2 backfill: nothing to process")
                 return
             }
-
-            Log.d("UserViewModel", "Backfill: processing ${unprocessed.size} confirmed match(es)")
-
-            // Ensure _allUsers and _allTeams are populated before looping
-            if (_allUsers.value.isEmpty()) {
-                val snap = usersCollection.get().await()
-                _allUsers.value = snap.documents.mapNotNull { it.toObject<UserProfile>() }
-            }
-            if (_allTeams.value.isEmpty()) {
-                val snap = teamsCollection.get().await()
-                _allTeams.value = snap.documents.mapNotNull { it.toObject<PlannedTeam>() }
-            }
-
-            // Process each match without per-match profile refreshes (perf optimisation)
+            Log.d("UserViewModel", "Glicko-2 backfill: ${unprocessed.size} match(es) to process")
             unprocessed.forEach { match ->
-                distributeMatchPoints(match, refreshAfter = false)
+                callGlicko2ProcessMatch(match.id)
             }
-
-            // Single refresh at the end so the Account Screen shows the updated points
-            val currentUser = _userProfile.value
-            if (currentUser != null) {
-                val refreshed = usersCollection.document(currentUser.email).get().await()
-                    .toObject<UserProfile>()
-                if (refreshed != null) _userProfile.value = refreshed
-            }
-            fetchAllUsers()
-
-            Log.d("UserViewModel", "Backfill: complete")
+            Log.d("UserViewModel", "Glicko-2 backfill: done")
         } catch (e: Exception) {
-            Log.e("UserViewModel", "Backfill error: ${e.message}")
-            backfillDone = false   // Allow retry on next sign-in
+            Log.e("UserViewModel", "Glicko-2 backfill error: ${e.message}")
+            backfillDone = false   // allow retry on next sign-in
+        }
+    }
+
+    /**
+     * Calls the glicko2ProcessMatch Cloud Function REST endpoint for [matchId].
+     * The function reads the match, runs Glicko-2 for all players (including no-shows),
+     * writes updated ratings back to Firestore and sets glicko2Distributed = true.
+     */
+    private suspend fun callGlicko2ProcessMatch(matchId: String) {
+        withContext(Dispatchers.IO) {
+            val url  = URL("https://us-central1-alpine-carrier-484421-f5.cloudfunctions.net/glicko2ProcessMatch")
+            val conn = url.openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write("""{"matchId":"$matchId"}""".toByteArray()) }
+                val code = conn.responseCode
+                if (code != 200) Log.w("UserViewModel", "glicko2ProcessMatch HTTP $code for match $matchId")
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "callGlicko2ProcessMatch error for $matchId: ${e.message}")
+            } finally {
+                conn.disconnect()
+            }
         }
     }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -57,6 +58,9 @@ fun TeamDetailsScreen(
 ) {
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Team info", "Players")
+
+    // Only the captain can edit the team
+    val isCurrentUserCaptain = currentUser.id == team.captainId
 
     var name by remember { mutableStateOf(team.name) }
     var city by remember { mutableStateOf(team.city) }
@@ -154,7 +158,7 @@ fun TeamDetailsScreen(
                     .size(100.dp)
                     .clip(CircleShape)
                     .background(Color.LightGray)
-                    .clickable { 
+                    .clickable(enabled = isCurrentUserCaptain) {
                         onPickIcon { url ->
                             selectedIconUrl = url
                             selectedImageUri = null
@@ -196,7 +200,8 @@ fun TeamDetailsScreen(
                         onValueChange = { name = it },
                         label = { Text("Team Name") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
+                        shape = MaterialTheme.shapes.medium,
+                        enabled = isCurrentUserCaptain
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -207,9 +212,12 @@ fun TeamDetailsScreen(
                         label = { Text("City") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium,
+                        enabled = isCurrentUserCaptain,
                         trailingIcon = {
-                            IconButton(onClick = { locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }) {
-                                Icon(Icons.Default.LocationOn, contentDescription = "Get Location")
+                            if (isCurrentUserCaptain) {
+                                IconButton(onClick = { locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }) {
+                                    Icon(Icons.Default.LocationOn, contentDescription = "Get Location")
+                                }
                             }
                         }
                     )
@@ -240,87 +248,126 @@ fun TeamDetailsScreen(
             } else {
                 // Tab 2: Players
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Captain Selection
-                    ExposedDropdownMenuBox(expanded = captainExpanded, onExpandedChange = { captainExpanded = !captainExpanded }) {
-                        OutlinedTextField(
-                            value = captainSearchText,
-                            onValueChange = { captainSearchText = it; captainExpanded = true },
-                            label = { Text("Capitain") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(captainExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium
-                        )
-                        if (filteredCaptains.isNotEmpty()) {
-                            ExposedDropdownMenu(expanded = captainExpanded, onDismissRequest = { captainExpanded = false }) {
-                                filteredCaptains.forEach { user ->
+
+                    // ── Captain-only notice for non-captains ──────────────
+                    if (!isCurrentUserCaptain) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            elevation = CardDefaults.cardElevation(0.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Only the captain can manage team members.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // ── Captain Selection (captain only) ──────────────────
+                    if (isCurrentUserCaptain) {
+                        ExposedDropdownMenuBox(expanded = captainExpanded, onExpandedChange = { captainExpanded = !captainExpanded }) {
+                            OutlinedTextField(
+                                value = captainSearchText,
+                                onValueChange = { captainSearchText = it; captainExpanded = true },
+                                label = { Text("Captain") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(captainExpanded) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            if (filteredCaptains.isNotEmpty()) {
+                                ExposedDropdownMenu(expanded = captainExpanded, onDismissRequest = { captainExpanded = false }) {
+                                    filteredCaptains.forEach { user ->
+                                        DropdownMenuItem(
+                                            text = { Text(user.name ?: user.email) },
+                                            onClick = {
+                                                selectedCaptain = user
+                                                captainSearchText = user.name ?: user.email
+                                                captainExpanded = false
+                                                if (selectedMembers.none { it.id == user.id }) {
+                                                    selectedMembers.add(user)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // ── Player Search (captain only) ──────────────────
+                        val searchEnabled = selectedMembers.size < maxPlayers
+                        ExposedDropdownMenuBox(
+                            expanded = playerSearchExpanded && filteredPlayers.isNotEmpty() && searchEnabled,
+                            onExpandedChange = { if (searchEnabled) playerSearchExpanded = !playerSearchExpanded }
+                        ) {
+                            OutlinedTextField(
+                                value = playerSearchText,
+                                onValueChange = { playerSearchText = it; playerSearchExpanded = true },
+                                label = { Text(if (searchEnabled) "Add player" else "Max members reached") },
+                                trailingIcon = { Icon(Icons.Default.Search, null) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                enabled = searchEnabled
+                            )
+                            ExposedDropdownMenu(expanded = playerSearchExpanded && filteredPlayers.isNotEmpty(), onDismissRequest = { playerSearchExpanded = false }) {
+                                filteredPlayers.forEach { user ->
                                     DropdownMenuItem(
                                         text = { Text(user.name ?: user.email) },
                                         onClick = {
-                                            selectedCaptain = user
-                                            captainSearchText = user.name ?: user.email
-                                            captainExpanded = false
-                                            if (selectedMembers.none { it.id == user.id }) {
-                                                selectedMembers.add(user)
-                                            }
+                                            selectedMembers.add(user)
+                                            playerSearchText = ""
+                                            playerSearchExpanded = false
                                         }
                                     )
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Player Search
-                    val searchEnabled = selectedMembers.size < maxPlayers
-                    ExposedDropdownMenuBox(
-                        expanded = playerSearchExpanded && filteredPlayers.isNotEmpty() && searchEnabled,
-                        onExpandedChange = { if (searchEnabled) playerSearchExpanded = !playerSearchExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = playerSearchText,
-                            onValueChange = { playerSearchText = it; playerSearchExpanded = true },
-                            label = { Text(if (searchEnabled) "Invite players" else "Max members reached") },
-                            trailingIcon = { Icon(Icons.Default.Search, null) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            enabled = searchEnabled
-                        )
-                        ExposedDropdownMenu(expanded = playerSearchExpanded && filteredPlayers.isNotEmpty(), onDismissRequest = { playerSearchExpanded = false }) {
-                            filteredPlayers.forEach { user -> 
-                                DropdownMenuItem(
-                                    text = { Text(user.name ?: user.email) }, 
-                                    onClick = { 
-                                        selectedMembers.add(user)
-                                        playerSearchText = ""
-                                        playerSearchExpanded = false 
-                                    }
-                                ) 
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
                     Text("Members", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
-                    
+
                     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val sortedDisplayList = selectedMembers.sortedByDescending { it.id == selectedCaptain?.id }
                         items(sortedDisplayList) { member ->
                             val isCaptain = member.id == selectedCaptain?.id
                             val isMe = member.id == currentUser.id
-                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
                                     text = buildString {
                                         append(member.name ?: member.email)
                                         if (isMe) append(" (you)")
-                                        if (isCaptain) append(" (capitain)")
+                                        if (isCaptain) append(" ★ captain")
                                     },
-                                    style = MaterialTheme.typography.bodyLarge, 
-                                    maxLines = 1, 
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
-                                if (!isCaptain && member.id != team.creatorId) {
+                                // Captain can remove any member except the current captain
+                                if (isCurrentUserCaptain && !isCaptain) {
                                     IconButton(onClick = { selectedMembers.removeAll { it.id == member.id } }) {
                                         Icon(Icons.Default.Delete, null, tint = Color.Gray)
                                     }
@@ -334,27 +381,29 @@ fun TeamDetailsScreen(
         }
 
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Button(
-                onClick = { 
-                    onSave(team.copy(
-                        name = name,
-                        city = city,
-                        members = selectedMembers.map { it.id },
-                        captainId = selectedCaptain?.id ?: team.captainId,
-                        profilePictureUrl = selectedIconUrl
-                    ), selectedImageUri)
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
-            ) {
-                Text("Save Changes", color = Color.White)
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            TextButton(onClick = { onDelete(team.id) }) {
-                Text("Delete Team", color = Color.Red, fontWeight = FontWeight.Bold)
+            if (isCurrentUserCaptain) {
+                Button(
+                    onClick = {
+                        onSave(team.copy(
+                            name = name,
+                            city = city,
+                            members = selectedMembers.map { it.id },
+                            captainId = selectedCaptain?.id ?: team.captainId,
+                            profilePictureUrl = selectedIconUrl
+                        ), selectedImageUri)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
+                ) {
+                    Text("Save Changes", color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(onClick = { onDelete(team.id) }) {
+                    Text("Delete Team", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
